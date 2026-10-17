@@ -17,7 +17,7 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
 
   qtax keygen <keyfile>
   qtax key <keyfile>
-  qtax commit-party (--identity TEXT | --identity-file FILE) --salt-out FILE
+  qtax commit-party --identity-file FILE --salt-out FILE
   qtax file --key <intake keyfile> --taxpayer-ref HEX --period TEXT --form TEXT (--content FILE | --content-digest HEX --content-size N)
             [--amends FILE] [--note TEXT] --out FILE
   qtax invoice --key <seller keyfile> --invoice-id TEXT --buyer KEY (--document FILE | --invoice-digest HEX)
@@ -33,10 +33,11 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
 
 Verify options by type
   filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE]
-              [(--taxpayer-identity TEXT | --taxpayer-identity-file FILE) --taxpayer-salt-file FILE]
+              [--taxpayer-identity-file FILE --taxpayer-salt-file FILE]
   invoice     --seller KEY [--document FILE]
   claim       --seller KEY --invoice FILE
   assessment  --intake KEY... --assessor KEY... --filing FILE [--root FILE] [--previous FILE] [--outcome FILE] [--other-assessment FILE]...
+              [--all-supplied]
   refund      --intake KEY... --assessor KEY... --officer KEY... --assessment FILE --filing FILE [--root FILE] [--previous-refund FILE]...
               [--other-assessment FILE]... [--all-supplied]
 
@@ -44,7 +45,8 @@ A KEY is a 64 hex character key id or a qtax-key/1 file written by the key comma
 are separate roles and a key may hold only one of them. Amounts are whole numbers of minor units and a CODE is three
 capital letters, normally an ISO 4217 currency code. Documents are hashed with SHA3-256 as they are read and never
 leave this machine. A taxpayer is named only by a salted commitment from commit-party, whose salt file stays with the
-authority. A refund names the previous refund on the same return, or --first when none has been paid. A refund is
+authority, and identities are read from files only, so they never appear in the shell history or the process list.
+A refund names the previous refund on the same return, or --first when none has been paid. A refund or an assessment is
 valid only with --all-supplied, which declares that every refund and assessment held for the return was given. When the
 filing is an amendment, --root gives the original return it belongs to.
 
@@ -62,7 +64,7 @@ function usageError(message) {
 const SPEC = {
   keygen: { flags: ['force'], values: [] },
   key: { flags: [], values: [] },
-  'commit-party': { flags: [], values: ['identity', 'identity-file', 'salt-out'] },
+  'commit-party': { flags: [], values: ['identity-file', 'salt-out'] },
   file: { flags: ['force'], values: ['key', 'taxpayer-ref', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'note', 'out'] },
   invoice: { flags: ['force'], values: ['key', 'invoice-id', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'tax', 'note', 'out'] },
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
@@ -70,15 +72,15 @@ const SPEC = {
   refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'note', 'out'] },
   anchor: { flags: [], values: ['seed-file', 'index', 'rpc', 'max-fee'] },
   complete: { flags: [], values: ['pending', 'tx', 'rpc'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'rpc'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'rpc'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment'] },
 };
 
 const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc'];
 const VERIFY_BY_TYPE = {
-  filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity', 'taxpayer-identity-file', 'taxpayer-salt-file'],
+  filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
   claim: ['seller', 'invoice'],
-  assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment'],
+  assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment', 'all-supplied'],
   refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'previous-refund', 'other-assessment', 'all-supplied'],
 };
 const IDENTITY_FILE_MAX = 4096;
@@ -588,9 +590,8 @@ function writeEnvelope(file, env, force) {
   atomicWrite(file, asciiJson(env) + '\n', force);
 }
 
-function identityFrom(flags, textFlag, fileFlag) {
-  if ((flags[textFlag] === undefined) === (flags[fileFlag] === undefined)) throw usageError('give --' + textFlag + ' or --' + fileFlag + ', exactly one');
-  if (flags[textFlag] !== undefined) return flags[textFlag];
+function identityFrom(flags, fileFlag) {
+  if (flags[fileFlag] === undefined) throw usageError('--' + fileFlag + ' is required, identities are read from a file so they never appear in the shell history or the process list');
   const raw = readSmall(flags[fileFlag], 'identity file', IDENTITY_FILE_MAX);
   let text;
   try {
@@ -618,7 +619,7 @@ async function cmdCommitParty(positional, flags) {
   if (positional.length) throw usageError('commit-party takes options only');
   const out = need(flags, 'salt-out');
   checkPaths([['--salt-out', out, false]], [['--identity-file', flags['identity-file']]]);
-  const c = qx.commitParty(identityFrom(flags, 'identity', 'identity-file'));
+  const c = qx.commitParty(identityFrom(flags, 'identity-file'));
   const text = saltText(c.salt);
   try {
     atomicWrite(out, text, false);
@@ -722,9 +723,9 @@ async function cmdVerify(positional, flags) {
   }
   if (flags['previous-refund']) opts.previousRefunds = capList(flags['previous-refund'], 'previous-refund', 500).map((f) => readJson(f, 'refund', true));
   if (flags['other-assessment']) opts.otherAssessments = capList(flags['other-assessment'], 'other-assessment', 500).map((f) => readJson(f, 'assessment', true));
-  const hasIdentity = flags['taxpayer-identity'] !== undefined || flags['taxpayer-identity-file'] !== undefined;
+  const hasIdentity = flags['taxpayer-identity-file'] !== undefined;
   if (hasIdentity !== (flags['taxpayer-salt-file'] !== undefined)) throw usageError('a taxpayer identity and --taxpayer-salt-file go together');
-  if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity', 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
+  if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
   if (flags.at !== undefined) opts.at = flags.at;
   if (flags['all-supplied']) opts.allSupplied = true;
   if (flags.rpc) opts.rpc = flags.rpc;
@@ -739,6 +740,10 @@ async function cmdVerify(positional, flags) {
   } else {
     if (res.type) console.log('type  ' + res.type);
     for (const ch of res.checks) console.log((ch.ok ? 'ok    ' : ch.transport ? 'retry ' : ch.indeterminate ? 'open  ' : 'FAIL  ') + safe(ch.name) + '  ' + safe(ch.detail));
+    if ((res.endpoints || []).length) {
+      console.log('endpoints  ' + res.endpoints.map(safe).join(', '));
+      if (res.officialEndpoints === false) console.log('notice  anchor times were confirmed by an endpoint that is not the official one for this network, so they are only as reliable as that endpoint');
+    }
     console.log(res.status.toUpperCase());
   }
   return res.status === 'valid' ? 0 : res.status === 'indeterminate' ? 2 : 1;

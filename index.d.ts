@@ -135,6 +135,8 @@ export interface VerifyResult {
   type: EnvelopeType | null;
   checks: VerifyCheck[];
   [field: string]: unknown;
+  endpoints: string[];
+  officialEndpoints: boolean | null;
 }
 
 export function generateKey(): Uint8Array;

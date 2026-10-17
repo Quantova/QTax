@@ -83,14 +83,14 @@ When a record is anchored, only a 32 byte Qstamp commitment reaches the chain. I
 8. A refund is verified with its assessment, the filing that assessment concerns and, when that filing is an amendment, the original return, which must be an original filing for the same taxpayer, period and form. The filing, the assessment and the refund are signed by trusted intake, assessor and officer keys, three different keys, and all name the same original return.
 9. A refund is within the refund due on its assessment. Every earlier refund on the return is supplied, validly signed by a trusted officer and continues the chain in position, total, currency and assessment order. Any supplied refund or assessment that is malformed, untrusted or for another return makes the result invalid, and so do two different supplied refunds, or two different supplied assessments, in the same position.
 10. When other assessments of the return are supplied, a refund, or any earlier refund of its chain, paid after a later assessment replaced its own assessment is invalid, every refund of the chain is within the refund due on its own assessment, and a refund anchored after that replacement is indeterminate, because it cannot be shown to have been paid first.
-11. A refund is valid only when the verifier declares that every refund and assessment it holds for the return was supplied. Without that declaration the result is indeterminate.
+11. A refund or an assessment is valid only when the verifier declares that every refund and assessment it holds for the return was supplied. Without that declaration the result is indeterminate, and an assessment is indeterminate when a later assessment of the same return is supplied, because it has been replaced.
 12. Each anchor is verified under the QTax record kind with a SHA3 digest, and the stated time is not later than the anchor time, allowing five minutes. An anchor more than twenty four hours after the stated time, unless another limit is given, or later than a given verification time, does not prove the stated time and makes the result indeterminate.
 
 A result is valid only when the trusted keys are given, the linked records are supplied, the return document is supplied for a filing, the earlier refunds on the return are supplied for a refund after the first, the original return is supplied when the filing is an amendment, the verifier declares the records it holds complete for a refund, and every record is anchored. When any of these is missing the result is indeterminate rather than valid. A record verified with anchoring not required proves only who signed it and what was signed, and its stated time is the claim of its signer.
 
 ## Trust model of this release
 
-This release targets the Quantova test network. Anchors on that network carry no evidential weight. The signing module is compiled from the Quantova Q-Crypto library, which follows FIPS 204 and FIPS 202 and has been tested against the NIST vectors, but has not yet been independently audited or validated under FIPS 140-3.
+This release anchors on the live Quantova network Q-test-net-1. The signing module is compiled from the Quantova Q-Crypto library, which follows FIPS 204 and FIPS 202 and has been tested against the NIST vectors. It has not been validated under FIPS 140-3. Anchor times are confirmed by the endpoints a verifier queries, so a time is only as reliable as those endpoints. Verification names the endpoints it consulted and says whether they are the official endpoints of the network, and a verifier who needs independence from any single operator should query several independent endpoints.
 
 A sealed record proves who signed it, what was signed and when it was anchored. Each check is made from the records a verifier is given. Two refunds in the same position of a chain, or a refund against a replaced assessment, are detected only when the conflicting record is supplied, so auditors should obtain every record the authority holds for a return, including its amendments. A buyer may claim the same invoice more than once, and repeated claims are a matter for the authority to examine. A taxpayer commitment is the same in every record that uses the same salt, so records about one taxpayer can be linked by anyone who sees them, and anyone who obtains the salt can test guesses of the identifier, so salts must be protected like the identifiers themselves. Each return must be received once as an original filing. Two original filings with the same taxpayer, period and form are treated as two separate returns with their own chains, and preventing them is a duty of the intake system that QTax does not check. Verifiers must keep the keys of retired officials in the trusted lists for as long as records they signed are verified, because a record signed by a key that is not trusted is invalid. A sealed record does not prove that a return is truthful or that an assessment is lawful, which remains the work of the authority and the courts, and it does not detect a transaction that was never recorded. Matching keys to accountable officials and businesses is a matter for the authority, for example through published key descriptions and mandates.
 
@@ -114,7 +114,7 @@ qtax key intake.key > intake.pub.json
 qtax key assessor.key > assessor.pub.json
 qtax key officer.key > officer.pub.json
 qtax key buyer.key > buyer.pub.json
-qtax commit-party --identity "TIN 1234567" --salt-out taxpayer.salt
+qtax commit-party --identity-file taxpayer.txt --salt-out taxpayer.salt
 
 qtax file --key intake.key --taxpayer-ref <commitment> --period "2026 Q3" --form "VAT return" --content return.pdf --out filing.json
 qtax invoice --key seller.key --invoice-id "INV 0042" --buyer buyer.pub.json --document invoice.pdf --currency EUR --total 121000 --tax 21000 --out invoice.json
@@ -143,7 +143,7 @@ The command exits with status 0 when the result is valid, 1 when it is invalid, 
 
 ## Network
 
-The Quantova test network is named Q-test-net-1 with genesis hash ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062. Anchors are recorded by the official Qstamp contract on that network. The public endpoint is https://rpc-testnet.quantova.org.
+The live Quantova network is named Q-test-net-1 with genesis hash ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062. Anchors are recorded by the official Qstamp contract on that network. The public endpoint is https://rpc-testnet.quantova.org.
 
 ## Licence
 
