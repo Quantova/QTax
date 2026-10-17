@@ -110,6 +110,7 @@ export interface VerifyOptions {
   assessment?: Envelope;
   previousRefunds?: Envelope[];
   otherAssessments?: Envelope[];
+  otherClaims?: Envelope[];
   root?: Envelope;
   allSupplied?: boolean;
   taxpayer?: { identity: string; salt: Uint8Array };

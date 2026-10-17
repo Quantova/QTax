@@ -72,14 +72,14 @@ const SPEC = {
   refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'note', 'out'] },
   anchor: { flags: ['trust-single-endpoint'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc'] },
   complete: { flags: ['trust-single-endpoint'], values: ['pending', 'tx'], multi: ['rpc'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'rpc'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'other-claim', 'rpc'] },
 };
 
 const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint'];
 const VERIFY_BY_TYPE = {
   filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
-  claim: ['seller', 'invoice'],
+  claim: ['seller', 'invoice', 'other-claim'],
   assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment', 'all-supplied'],
   refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'previous-refund', 'other-assessment', 'all-supplied'],
 };
@@ -723,6 +723,7 @@ async function cmdVerify(positional, flags) {
   }
   if (flags['previous-refund']) opts.previousRefunds = capList(flags['previous-refund'], 'previous-refund', 500).map((f) => readJson(f, 'refund', true));
   if (flags['other-assessment']) opts.otherAssessments = capList(flags['other-assessment'], 'other-assessment', 500).map((f) => readJson(f, 'assessment', true));
+  if (flags['other-claim']) opts.otherClaims = capList(flags['other-claim'], 'other-claim', 500).map((f) => readJson(f, 'claim', true));
   const hasIdentity = flags['taxpayer-identity-file'] !== undefined;
   if (hasIdentity !== (flags['taxpayer-salt-file'] !== undefined)) throw usageError('a taxpayer identity and --taxpayer-salt-file go together');
   if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
