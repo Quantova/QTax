@@ -26,10 +26,12 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
   qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due N
               [--supersedes FILE] [--note TEXT] --out FILE
   qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) [--note TEXT] --out FILE
-  qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--max-fee N]
-  qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint]
+  qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
+  qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]...
+                [--allow-loopback]
   qtax verify <envelope> --type TYPE [options for that type] [--allow-unanchored] [--at TIME] [--max-anchor-delay SECONDS]
-              [--rpc URL]... [--trust-single-endpoint] [--json]
+              [--expect-sender ADDRESS]... [--rpc URL]... [--trust-custom-endpoints] [--trust-single-endpoint]
+              [--allow-endpoint HOST]... [--allow-loopback] [--json]
 
 Verify options by type
   filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE]
@@ -48,7 +50,13 @@ leave this machine. A taxpayer is named only by a salted commitment from commit-
 authority, and identities are read from files only, so they never appear in the shell history or the process list.
 A refund names the previous refund on the same return, or --first when none has been paid. A refund or an assessment is
 valid only with --all-supplied, which declares that every refund and assessment held for the return was given. When the
-filing is an amendment, --root gives the original return it belongs to.
+filing is an amendment, --root gives the original return it belongs to. A supplied earlier refund or other assessment
+that is malformed, untrusted or for another return makes the result invalid. Without --at the time of verification is
+read from the chain, and verification stops with exit code 2 when it cannot be read. An anchor counts only when it is
+proven by a finality certificate or by official endpoints of two different operators, any other anchor is unproven,
+treated as not anchored, and the result is INDETERMINATE. Endpoints given with --rpc are consulted by verify only with --trust-custom-endpoints, loopback endpoints only
+with --allow-loopback and private network endpoints only when named with --allow-endpoint. --expect-sender names
+the account that must have signed each anchor.
 
 If anchor is interrupted after its transaction may have been sent, it keeps a pending stamp beside each envelope and
 refuses to anchor them again. Finish it with complete, giving the same envelopes in the same order.
@@ -61,6 +69,16 @@ function usageError(message) {
   return e;
 }
 
+function endpointOptions(flags) {
+  const out = {};
+  if (flags.rpc) out.clients = flags.rpc;
+  if (flags['allow-endpoint']) out.endpointAllowList = flags['allow-endpoint'];
+  if (flags['trust-single-endpoint']) out.trustSingleEndpoint = true;
+  if (flags['trust-custom-endpoints']) out.trustCustomEndpoints = true;
+  if (flags['allow-loopback']) out.allowLoopback = true;
+  return out;
+}
+
 const SPEC = {
   keygen: { flags: ['force'], values: [] },
   key: { flags: [], values: [] },
@@ -70,12 +88,12 @@ const SPEC = {
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
   assess: { flags: ['force'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'note', 'out'] },
   refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'note', 'out'] },
-  anchor: { flags: ['trust-single-endpoint'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc'] },
-  complete: { flags: ['trust-single-endpoint'], values: ['pending', 'tx'], multi: ['rpc'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'other-claim', 'rpc'] },
+  anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc', 'allow-endpoint'] },
+  complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'other-claim', 'rpc', 'allow-endpoint', 'expect-sender'] },
 };
 
-const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint'];
+const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback', 'allow-endpoint', 'expect-sender'];
 const VERIFY_BY_TYPE = {
   filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
@@ -393,7 +411,7 @@ async function cmdAnchor(positional, flags) {
   };
   let anchored;
   try {
-    anchored = await qx.anchor(envs, { seed, index, network: 'testnet', clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'], maxFee: flags['max-fee'], onPending: keep });
+    anchored = await qx.anchor(envs, { seed, index, network: 'testnet', ...endpointOptions(flags), maxFee: flags['max-fee'], onPending: keep });
   } catch (e) {
     if (e && e.pending && typeof e.pending === 'object') {
       let message = 'the anchoring transaction may already have been sent, ' + friendly(e);
@@ -430,7 +448,7 @@ async function cmdComplete(positional, flags) {
     if (e && typeof e === 'object' && !Array.isArray(e)) delete e.anchor;
     return e;
   });
-  const anchored = await qx.complete(envs, pending, { clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
+  const anchored = await qx.complete(envs, pending, endpointOptions(flags));
   const code = saveAnchored(positional, anchored);
   if (code === 0) {
     fs.rmSync(pendingFile, { force: true });
@@ -729,8 +747,8 @@ async function cmdVerify(positional, flags) {
   if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
   if (flags.at !== undefined) opts.at = flags.at;
   if (flags['all-supplied']) opts.allSupplied = true;
-  if (flags.rpc) opts.clients = flags.rpc;
-  if (flags['trust-single-endpoint']) opts.trustSingleEndpoint = true;
+  Object.assign(opts, endpointOptions(flags));
+  if (flags['expect-sender']) opts.expectedSender = flags['expect-sender'];
   let res;
   try {
     res = await qx.verify(env, opts);
@@ -744,7 +762,7 @@ async function cmdVerify(positional, flags) {
     for (const ch of res.checks) console.log((ch.ok ? 'ok    ' : ch.transport ? 'retry ' : ch.indeterminate ? 'open  ' : 'FAIL  ') + safe(ch.name) + '  ' + safe(ch.detail));
     if ((res.endpoints || []).length) {
       console.log('endpoints  ' + res.endpoints.map(safe).join(', '));
-      if (res.officialEndpoints === false) console.log('notice  anchor times were confirmed by an endpoint that is not the official one for this network, so they are only as reliable as that endpoint');
+      if (res.officialEndpoints === false) console.log('notice  endpoints other than the official ones of this network were consulted, an anchor confirmed only by them is not proven');
     }
     console.log(res.status.toUpperCase());
   }
@@ -775,6 +793,7 @@ main().then(
   (e) => {
     console.error(safe(friendly(e)).slice(0, 600));
     const evidence = /not a valid envelope|not validly signed|must be an? (filing|invoice|claim|assessment|refund) envelope|does not belong to these|only the buyer named|above the refund due|already anchored|signature that does not verify|not signed by the key it names|was paid on another return|paid in another currency|relied on a later assessment|same return|must not hold the key|cannot be paid before the previous refund|decided before the assessment it supersedes|amendment cannot be received before|cannot be claimed before|cannot be decided before|cannot be paid before its assessment|same taxpayer|same period and form/;
-    process.exitCode = e && (e.usage || (e.code === 'QTAX_INVALID_INPUT' && !evidence.test(e.message || ''))) ? 64 : 1;
+    if (e && e.code === 'QTAX_NO_CHAIN_TIME') process.exitCode = 2;
+    else process.exitCode = e && (e.usage || (e.code === 'QTAX_INVALID_INPUT' && !evidence.test(e.message || ''))) ? 64 : 1;
   },
 );
