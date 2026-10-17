@@ -26,10 +26,10 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
   qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due N
               [--supersedes FILE] [--note TEXT] --out FILE
   qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) [--note TEXT] --out FILE
-  qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL] [--max-fee N]
-  qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]
+  qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--max-fee N]
+  qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint]
   qtax verify <envelope> --type TYPE [options for that type] [--allow-unanchored] [--at TIME] [--max-anchor-delay SECONDS]
-              [--rpc URL] [--json]
+              [--rpc URL]... [--trust-single-endpoint] [--json]
 
 Verify options by type
   filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE]
@@ -70,12 +70,12 @@ const SPEC = {
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
   assess: { flags: ['force'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'note', 'out'] },
   refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'note', 'out'] },
-  anchor: { flags: [], values: ['seed-file', 'index', 'rpc', 'max-fee'] },
-  complete: { flags: [], values: ['pending', 'tx', 'rpc'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'rpc'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment'] },
+  anchor: { flags: ['trust-single-endpoint'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc'] },
+  complete: { flags: ['trust-single-endpoint'], values: ['pending', 'tx'], multi: ['rpc'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'rpc'] },
 };
 
-const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc'];
+const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint'];
 const VERIFY_BY_TYPE = {
   filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
@@ -393,7 +393,7 @@ async function cmdAnchor(positional, flags) {
   };
   let anchored;
   try {
-    anchored = await qx.anchor(envs, { seed, index, network: 'testnet', rpc: flags.rpc, maxFee: flags['max-fee'], onPending: keep });
+    anchored = await qx.anchor(envs, { seed, index, network: 'testnet', clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'], maxFee: flags['max-fee'], onPending: keep });
   } catch (e) {
     if (e && e.pending && typeof e.pending === 'object') {
       let message = 'the anchoring transaction may already have been sent, ' + friendly(e);
@@ -430,7 +430,7 @@ async function cmdComplete(positional, flags) {
     if (e && typeof e === 'object' && !Array.isArray(e)) delete e.anchor;
     return e;
   });
-  const anchored = await qx.complete(envs, pending, { rpc: flags.rpc });
+  const anchored = await qx.complete(envs, pending, { clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
   const code = saveAnchored(positional, anchored);
   if (code === 0) {
     fs.rmSync(pendingFile, { force: true });
@@ -728,7 +728,8 @@ async function cmdVerify(positional, flags) {
   if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
   if (flags.at !== undefined) opts.at = flags.at;
   if (flags['all-supplied']) opts.allSupplied = true;
-  if (flags.rpc) opts.rpc = flags.rpc;
+  if (flags.rpc) opts.clients = flags.rpc;
+  if (flags['trust-single-endpoint']) opts.trustSingleEndpoint = true;
   let res;
   try {
     res = await qx.verify(env, opts);
