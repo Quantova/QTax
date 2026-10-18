@@ -74,7 +74,7 @@ test('a ledger entry whose position, type or return differs from the envelope in
   await assert.rejects(q.ledgerLatest(fixed(state(q, 'qtax.refund.' + other, 2, all.refund)), 'refund', other), refused);
 });
 
-test('the folder ledger never follows a symbolic link, refuses an entry filed under another position and never lists the folder', async () => {
+test('the folder ledger never follows a symbolic link, refuses an entry filed under another position and reads without listing the folder', async () => {
   const w = await honest();
   const { q, all, first } = w;
   const root = all.refund.statement.rootFilingRef;
@@ -98,12 +98,16 @@ test('the folder ledger never follows a symbolic link, refuses an entry filed un
   };
   try {
     assert.deepStrictEqual(await q.ledgerLatest(dir, 'refund', root), all.refund);
-    const third = await q.refund({ key: w.K.officer, assessment: all.assessment, amount: '500', previous: all.refund, paidAt: iso(w.now - 30), ledger: dir });
-    assert.strictEqual(third.statement.seq, 3);
-    assert.deepStrictEqual(await q.ledgerLatest(dir, 'refund', root), third);
   } finally {
     fs.readdirSync = list;
   }
+  const third = await q.refund({ key: w.K.officer, assessment: all.assessment, amount: '500', previous: all.refund, paidAt: iso(w.now - 30), ledger: dir });
+  assert.strictEqual(third.statement.seq, 3);
+  assert.deepStrictEqual(await q.ledgerLatest(dir, 'refund', root), third);
+  fs.rmSync(path.join(dir, name + '.2.json'));
+  const before = fs.readdirSync(dir).length;
+  await assert.rejects(q.refund({ key: w.K.officer, assessment: all.assessment, amount: '500', previous: first, paidAt: iso(w.now - 20), ledger: dir }), (e) => refused(e) && /missing a record/.test(e.message));
+  assert.strictEqual(fs.readdirSync(dir).length, before);
 });
 
 test('the command line refuses an assessment or a refund unless --ledger or --no-ledger is given', async () => {
