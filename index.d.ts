@@ -22,6 +22,15 @@ export interface KeyDescription {
 
 export type KeyRef = string | Uint8Array | KeyDescription;
 
+export type TrustedKey = KeyRef | { key: KeyRef; from?: string; until?: string };
+
+export type KeyStatus = { revoked: false } | { revoked: true; revokedAt: number };
+
+export interface SeriesLedger {
+  read(name: string): Promise<string | null>;
+  compareAndSwap(name: string, expected: string | null, next: string): Promise<boolean>;
+}
+
 export interface FileOptions {
   key: Uint8Array;
   taxpayerRef: string;
@@ -63,6 +72,7 @@ export interface AssessOptions {
   currency: string;
   refundDue?: string;
   supersedes?: Envelope;
+  ledger?: string | SeriesLedger;
   decidedAt?: string;
   note?: string;
 }
@@ -73,6 +83,7 @@ export interface RefundOptions {
   amount: string;
   previous?: Envelope;
   first?: boolean;
+  ledger?: string | SeriesLedger;
   currency?: string;
   paidAt?: string;
   note?: string;
@@ -96,9 +107,9 @@ export interface AnchorOptions {
 
 export interface VerifyOptions {
   type: EnvelopeType;
-  intakeKeys?: KeyRef[];
-  assessorKeys?: KeyRef[];
-  officerKeys?: KeyRef[];
+  intakeKeys?: TrustedKey[];
+  assessorKeys?: TrustedKey[];
+  officerKeys?: TrustedKey[];
   sellerKeyId?: KeyRef;
   content?: Uint8Array;
   contentDigest?: string;
@@ -110,9 +121,13 @@ export interface VerifyOptions {
   invoice?: Envelope;
   filing?: Envelope;
   assessment?: Envelope;
+  refunds?: Envelope[];
   previousRefunds?: Envelope[];
   otherAssessments?: Envelope[];
   otherClaims?: Envelope[];
+  otherInvoices?: Envelope[];
+  keyStatus?: (keyId: string) => KeyStatus | Promise<KeyStatus>;
+  keyStatusTimeoutMs?: number;
   root?: Envelope;
   allSupplied?: boolean;
   taxpayer?: { identity: string; salt: Uint8Array };
@@ -157,8 +172,12 @@ export function commitParty(identity: string): { salt: Uint8Array; ref: string }
 export function file(options: FileOptions): Envelope;
 export function invoice(options: InvoiceOptions): Envelope;
 export function claim(options: ClaimOptions): Envelope;
+export function assess(options: AssessOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
 export function assess(options: AssessOptions): Envelope;
+export function refund(options: RefundOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
 export function refund(options: RefundOptions): Envelope;
+export function folderLedger(folder: string): SeriesLedger;
+export function ledgerLatest(ledger: string | SeriesLedger, type: 'assessment' | 'refund', rootFilingRef: string): Promise<Envelope | null>;
 export function anchor(envelopes: Envelope | Envelope[], options: AnchorOptions): Promise<Envelope[]>;
 export function complete(envelopes: Envelope | Envelope[], pending: unknown, options?: { rpc?: string | string[]; client?: unknown; clients?: Array<string | unknown>; trustSingleEndpoint?: boolean; allowLoopback?: boolean; endpointAllowList?: string[]; timeoutMs?: number }): Promise<Envelope[]>;
 export function verify(envelope: unknown, options: VerifyOptions): Promise<VerifyResult>;

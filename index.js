@@ -18,6 +18,8 @@ module.exports = {
   claim: T.claim,
   assess: T.assess,
   refund: T.refund,
+  folderLedger: T.folderLedger,
+  ledgerLatest: T.ledgerLatest,
   anchor: T.anchor,
   complete: T.complete,
   verify,

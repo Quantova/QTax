@@ -24,8 +24,8 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
                --currency CODE --total N --tax N [--note TEXT] --out FILE
   qtax claim --key <buyer keyfile> --invoice FILE [--note TEXT] --out FILE
   qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due N
-              [--supersedes FILE] [--note TEXT] --out FILE
-  qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) [--note TEXT] --out FILE
+              [--supersedes FILE] [--ledger DIR] [--note TEXT] --out FILE
+  qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) [--ledger DIR] [--note TEXT] --out FILE
   qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
   qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]...
                 [--allow-loopback]
@@ -37,10 +37,10 @@ Verify options by type
   filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE]
               [--taxpayer-identity-file FILE --taxpayer-salt-file FILE]
   invoice     --seller KEY [--document FILE]
-  claim       --seller KEY --invoice FILE
+  claim       --seller KEY --invoice FILE [--other-claim FILE]... [--other-invoice FILE]...
   assessment  --intake KEY... --assessor KEY... --filing FILE [--root FILE] [--previous FILE] [--outcome FILE] [--other-assessment FILE]...
               [--all-supplied]
-  refund      --intake KEY... --assessor KEY... --officer KEY... --assessment FILE --filing FILE [--root FILE] [--previous-refund FILE]...
+  refund      --intake KEY... --assessor KEY... --officer KEY... --assessment FILE --filing FILE [--root FILE] [--refund FILE]...
               [--other-assessment FILE]... [--all-supplied]
 
 A KEY is a 64 hex character key id or a qtax-key/1 file written by the key command. Intake, assessor and officer keys
@@ -48,8 +48,11 @@ are separate roles and a key may hold only one of them. Amounts are whole number
 capital letters, normally an ISO 4217 currency code. Documents are hashed with SHA3-256 as they are read and never
 leave this machine. A taxpayer is named only by a salted commitment from commit-party, whose salt file stays with the
 authority, and identities are read from files only, so they never appear in the shell history or the process list.
-A refund names the previous refund on the same return, or --first when none has been paid. A refund or an assessment is
-valid only with --all-supplied, which declares that every refund and assessment held for the return was given. When the
+A refund names the previous refund on the same return, or --first when none has been paid. Signing alone does not stop
+a second refund or assessment at the same position, so give --ledger with one folder shared by every signer of the
+return, and a record that does not follow the latest one the folder holds is refused. A refund or an assessment is
+valid only with --all-supplied, which declares that every refund and assessment held for the return was given with
+--refund and --other-assessment, and without those lists the declaration covers nothing and the result is open. When the
 filing is an amendment, --root gives the original return it belongs to. A supplied earlier refund or other assessment
 that is malformed, untrusted or for another return makes the result invalid. Without --at the time of verification is
 read from the chain, and verification stops with exit code 2 when it cannot be read. An anchor counts only when it is
@@ -86,20 +89,20 @@ const SPEC = {
   file: { flags: ['force'], values: ['key', 'taxpayer-ref', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'note', 'out'] },
   invoice: { flags: ['force'], values: ['key', 'invoice-id', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'tax', 'note', 'out'] },
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
-  assess: { flags: ['force'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'note', 'out'] },
-  refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'note', 'out'] },
+  assess: { flags: ['force'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'ledger', 'note', 'out'] },
+  refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'ledger', 'note', 'out'] },
   anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc', 'allow-endpoint'] },
   complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'previous-refund', 'other-assessment', 'other-claim', 'rpc', 'allow-endpoint', 'expect-sender'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
 };
 
 const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback', 'allow-endpoint', 'expect-sender'];
 const VERIFY_BY_TYPE = {
   filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
-  claim: ['seller', 'invoice', 'other-claim'],
+  claim: ['seller', 'invoice', 'other-claim', 'other-invoice'],
   assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment', 'all-supplied'],
-  refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'previous-refund', 'other-assessment', 'all-supplied'],
+  refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'refund', 'previous-refund', 'other-assessment', 'all-supplied'],
 };
 const IDENTITY_FILE_MAX = 4096;
 
@@ -717,6 +720,26 @@ async function cmdClaim(positional, flags) {
   return 0;
 }
 
+async function withSeedAsync(file, what, fn) {
+  const seed = readSeed(file, what);
+  try {
+    return await fn(seed);
+  } finally {
+    seed.fill(0);
+  }
+}
+
+function ledgerFolder(dir) {
+  let st;
+  try {
+    st = fs.lstatSync(dir);
+  } catch (e) {
+    throw usageError('the ledger folder ' + safe(dir) + ' could not be opened');
+  }
+  if (!st.isDirectory()) throw usageError('--ledger is a folder, never a symbolic link');
+  return dir;
+}
+
 async function cmdAssess(positional, flags) {
   if (positional.length) throw usageError('assess takes options only');
   const out = need(flags, 'out');
@@ -725,7 +748,8 @@ async function cmdAssess(positional, flags) {
   const o = await digestFrom(flags, 'outcome', 'outcome-digest', 'assessment document', true);
   const opts = { filing, outcomeDigest: o.digest, currency: need(flags, 'currency'), refundDue: amountFlag(need(flags, 'refund-due'), 'refund-due'), note: flags.note };
   if (flags.supersedes !== undefined) opts.supersedes = readJson(flags.supersedes, 'superseded assessment', true);
-  const env = withSeed(need(flags, 'key'), '--key', (seed) => qx.assess(Object.assign({ key: seed }, opts)));
+  if (flags.ledger !== undefined) opts.ledger = ledgerFolder(flags.ledger);
+  const env = await withSeedAsync(need(flags, 'key'), '--key', (seed) => qx.assess(Object.assign({ key: seed }, opts)));
   writeEnvelope(out, env, flags.force);
   console.log('assessment ' + env.statement.assessmentId + ' sealed as ' + qx.refOf(env) + ', written to ' + safe(out));
   return 0;
@@ -740,7 +764,8 @@ async function cmdRefund(positional, flags) {
   const opts = { assessment, amount: amountFlag(need(flags, 'amount'), 'amount'), note: flags.note };
   if (flags.first) opts.first = true;
   else opts.previous = readJson(flags['previous-refund'], 'previous refund', true);
-  const env = withSeed(need(flags, 'key'), '--key', (seed) => qx.refund(Object.assign({ key: seed }, opts)));
+  if (flags.ledger !== undefined) opts.ledger = ledgerFolder(flags.ledger);
+  const env = await withSeedAsync(need(flags, 'key'), '--key', (seed) => qx.refund(Object.assign({ key: seed }, opts)));
   writeEnvelope(out, env, flags.force);
   console.log('refund ' + env.statement.seq + ' on the filing, ' + env.statement.refundId + ' of ' + env.statement.amount + ' ' + env.statement.currency + ', total paid ' + env.statement.paidTotal + ', sealed as ' + qx.refOf(env) + ', written to ' + safe(out));
   return 0;
@@ -768,7 +793,10 @@ async function cmdVerify(positional, flags) {
   for (const [flag, name, what] of [['previous', 'previous', prevWhat], ['invoice', 'invoice', 'invoice'], ['filing', 'filing', 'filing'], ['assessment', 'assessment', 'assessment'], ['root', 'root', 'original return']]) {
     if (flags[flag] !== undefined) opts[name] = readJson(flags[flag], what, true);
   }
+  if (flags.refund && flags['previous-refund']) throw usageError('give every refund held for the return with --refund, --previous-refund is its older name, not both');
+  if (flags.refund) opts.refunds = capList(flags.refund, 'refund', 500).map((f) => readJson(f, 'refund', true));
   if (flags['previous-refund']) opts.previousRefunds = capList(flags['previous-refund'], 'previous-refund', 500).map((f) => readJson(f, 'refund', true));
+  if (flags['other-invoice']) opts.otherInvoices = capList(flags['other-invoice'], 'other-invoice', 500).map((f) => readJson(f, 'invoice', true));
   if (flags['other-assessment']) opts.otherAssessments = capList(flags['other-assessment'], 'other-assessment', 500).map((f) => readJson(f, 'assessment', true));
   if (flags['other-claim']) opts.otherClaims = capList(flags['other-claim'], 'other-claim', 500).map((f) => readJson(f, 'claim', true));
   const hasIdentity = flags['taxpayer-identity-file'] !== undefined;
