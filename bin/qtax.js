@@ -24,8 +24,9 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
                --currency CODE --total N --tax N [--note TEXT] --out FILE
   qtax claim --key <buyer keyfile> --invoice FILE [--note TEXT] --out FILE
   qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due N
-              [--supersedes FILE] [--ledger DIR] [--note TEXT] --out FILE
-  qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) [--ledger DIR] [--note TEXT] --out FILE
+              [--supersedes FILE] (--ledger DIR | --no-ledger) [--note TEXT] --out FILE
+  qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) (--ledger DIR | --no-ledger)
+              [--note TEXT] --out FILE
   qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
   qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]...
                 [--allow-loopback]
@@ -50,7 +51,8 @@ leave this machine. A taxpayer is named only by a salted commitment from commit-
 authority, and identities are read from files only, so they never appear in the shell history or the process list.
 A refund names the previous refund on the same return, or --first when none has been paid. Signing alone does not stop
 a second refund or assessment at the same position, so give --ledger with one folder shared by every signer of the
-return, and a record that does not follow the latest one the folder holds is refused. A refund or an assessment is
+return, and a record that does not follow the latest one the folder holds is refused. An assessment or a refund is
+refused without --ledger, unless --no-ledger declares that the integrating system serialises the return itself. A refund or an assessment is
 valid only with --all-supplied, which declares that every refund and assessment held for the return was given with
 --refund and --other-assessment, and without those lists the declaration covers nothing and the result is open. When the
 filing is an amendment, --root gives the original return it belongs to. A supplied earlier refund or other assessment
@@ -89,8 +91,8 @@ const SPEC = {
   file: { flags: ['force'], values: ['key', 'taxpayer-ref', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'note', 'out'] },
   invoice: { flags: ['force'], values: ['key', 'invoice-id', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'tax', 'note', 'out'] },
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
-  assess: { flags: ['force'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'ledger', 'note', 'out'] },
-  refund: { flags: ['force', 'first'], values: ['key', 'assessment', 'amount', 'previous-refund', 'ledger', 'note', 'out'] },
+  assess: { flags: ['force', 'no-ledger'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'ledger', 'note', 'out'] },
+  refund: { flags: ['force', 'first', 'no-ledger'], values: ['key', 'assessment', 'amount', 'previous-refund', 'ledger', 'note', 'out'] },
   anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc', 'allow-endpoint'] },
   complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
   verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
@@ -729,6 +731,14 @@ async function withSeedAsync(file, what, fn) {
   }
 }
 
+function ledgerChoice(type, flags) {
+  if (flags.ledger !== undefined && flags['no-ledger']) throw usageError('give --ledger or --no-ledger, not both');
+  if (flags.ledger !== undefined || flags['no-ledger']) return;
+  const e = usageError((type === 'assessment' ? 'an ' : 'a ') + type + ' is part of the series of its return, so give --ledger with the folder shared by every signer of the authority, or --no-ledger when the integrating system serialises the return itself, nothing was signed');
+  e.code = 'QTAX_LEDGER_REQUIRED';
+  throw e;
+}
+
 function ledgerFolder(dir) {
   let st;
   try {
@@ -742,6 +752,7 @@ function ledgerFolder(dir) {
 
 async function cmdAssess(positional, flags) {
   if (positional.length) throw usageError('assess takes options only');
+  ledgerChoice('assessment', flags);
   const out = need(flags, 'out');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--filing', flags.filing], ['--outcome', flags.outcome], ['--supersedes', flags.supersedes]]);
   const filing = readJson(need(flags, 'filing'), 'filing', true);
@@ -757,6 +768,7 @@ async function cmdAssess(positional, flags) {
 
 async function cmdRefund(positional, flags) {
   if (positional.length) throw usageError('refund takes options only');
+  ledgerChoice('refund', flags);
   const out = need(flags, 'out');
   if ((flags['previous-refund'] === undefined) === !flags.first) throw usageError('give --previous-refund with the last refund on this filing, or --first when none has been paid, exactly one');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--assessment', flags.assessment], ['--previous-refund', flags['previous-refund']]]);
