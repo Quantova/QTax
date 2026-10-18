@@ -70,7 +70,7 @@ test('hostile filing files make verify exit non zero quickly and never print VAL
     fs.writeFileSync(assessment, JSON.stringify(w.assessment));
     const tail = ['--allow-unanchored', '--at', w.at];
     const intake = ['--intake', q.keyId(w.K.intake)];
-    const assessed = ['--type', 'assessment', '--assessor', q.keyId(w.K.assessor), '--all-supplied'].concat(intake);
+    const assessed = ['--type', 'assessment', '--assessor', q.keyId(w.K.assessor), '--all-supplied', '--other-assessment', assessment].concat(intake);
     await control(['verify', good, '--type', 'filing', '--content-digest', w.contentDigest].concat(intake, tail), good, w.filing);
     await control(['verify', assessment, '--filing', good].concat(assessed, tail), good, w.filing);
     const results = await cliCampaign({

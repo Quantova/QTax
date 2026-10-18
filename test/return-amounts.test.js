@@ -80,7 +80,7 @@ async function books(rng) {
   const check = (refund, supplied) => {
     net.chain.block(now);
     const s = supplied || {};
-    return q.verify(refund, Object.assign({ type: 'refund', assessment: s.assessment || assessment, filing, previousRefunds: s.previous || [first], allSupplied: true, at: iso(now) }, roles, net.opts));
+    return q.verify(refund, Object.assign({ type: 'refund', assessment: s.assessment || assessment, filing, previousRefunds: s.previous || [first], otherAssessments: [s.assessment || assessment], allSupplied: true, at: iso(now) }, roles, net.opts));
   };
   return { r, K, next, assessment, first, second, due, a1, a2, forge, check };
 }

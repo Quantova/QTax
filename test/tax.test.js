@@ -25,7 +25,7 @@ async function paid() {
   const rogue = await at(q.assess({ key: K.stranger, filing, outcome: Buffer.from('other'), currency: 'EUR', refundDue: '9000', decidedAt: iso(t0 + 30) }), t0 + 35);
   const refund = await at(q.refund({ key: K.officer, assessment, amount: '500', first: true, paidAt: iso(t0 + 20) }), t0 + 25);
   net.chain.block(now);
-  const opts = Object.assign({ type: 'refund', assessment, filing, allSupplied: true, intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, net.opts);
+  const opts = Object.assign({ type: 'refund', assessment, filing, allSupplied: true, refunds: [refund], otherAssessments: [assessment], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, net.opts);
   return { net, refund, assessment, foreign, rogue, opts };
 }
 
@@ -46,7 +46,9 @@ test('a malformed, untrusted or foreign supplied assessment makes the result inv
 
 test('a malformed earlier refund supplied with a later refund makes the result invalid', async () => {
   const p = await paid();
-  const r = await q.verify(p.refund, Object.assign({}, p.opts, { previousRefunds: [{ junk: 1 }] }));
+  const o = Object.assign({}, p.opts, { previousRefunds: [{ junk: 1 }] });
+  delete o.refunds;
+  const r = await q.verify(p.refund, o);
   assert.strictEqual(r.status, 'invalid', failing(r).join('\n'));
 });
 
