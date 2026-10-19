@@ -151,3 +151,71 @@ test('the command line refuses an assessment or a refund unless --ledger or --no
   const help = run(['help']);
   assert.match(help.stdout, /\(--ledger DIR \| --no-ledger\)/);
 });
+
+test('a QTax ledger folder any user can write is refused', async () => {
+  const w = await honest();
+  const { q, all } = w;
+  const root = all.refund.statement.rootFilingRef;
+  const open = folder();
+  fs.chmodSync(open, 0o777);
+  await assert.rejects(q.ledgerLatest(open, 'refund', root), (e) => refused(e) && /every user of this machine/.test(e.message));
+});
+
+test('a QTax ledger under a folder any user can change, or with an access control list, is refused', async () => {
+  const w = await honest();
+  const { q, all } = w;
+  const root = all.refund.statement.rootFilingRef;
+  const open = folder();
+  fs.chmodSync(open, 0o777);
+  const inside = path.join(open, 'ledger');
+  fs.mkdirSync(inside, { mode: 0o700 });
+  await assert.rejects(q.ledgerLatest(inside, 'refund', root), (e) => refused(e) && /above the ledger can be changed by another user/.test(e.message));
+  const listed = folder();
+  const acl = process.platform === 'darwin'
+    ? spawnSync('chmod', ['+a', 'everyone allow add_file,delete_child', listed])
+    : spawnSync('setfacl', ['-m', 'u:nobody:rwx', listed]);
+  if (acl.status === 0) await assert.rejects(q.ledgerLatest(listed, 'refund', root), (e) => refused(e) && /access control list/.test(e.message));
+});
+
+test('a QTax ledger reached through a symbolic link or a parent that another user can change is refused, and a name past the largest position never blocks it', async () => {
+  const w = await honest();
+  const { q, all } = w;
+  const root = all.refund.statement.rootFilingRef;
+  const CODE = 'QTAX_LEDGER';
+  const OPEN = (d) => q.ledgerLatest(d, 'refund', root);
+  const stray = folder();
+  fs.writeFileSync(path.join(stray, 'qtax.refund.' + root + '.1000001.json'), 'stray');
+  assert.strictEqual(await q.ledgerLatest(stray, 'refund', root), null);
+
+  const parentAcl = folder();
+  const underAcl = path.join(parentAcl, 'ledger');
+  fs.mkdirSync(underAcl, { mode: 0o700 });
+  const set = process.platform === 'darwin' ? spawnSync('chmod', ['+a', 'everyone allow add_file,delete_child,add_subdirectory', parentAcl]) : spawnSync('setfacl', ['-m', 'u:nobody:rwx', parentAcl]);
+  if (set.status === 0) await assert.rejects(OPEN(underAcl), (e) => e.code === CODE && /can be changed by another user/.test(e.message));
+  const safeTarget = folder();
+  const openHolder = folder();
+  fs.chmodSync(openHolder, 0o777);
+  const linkInOpen = path.join(openHolder, 'ledger');
+  fs.symlinkSync(safeTarget, linkInOpen);
+  await assert.rejects(OPEN(linkInOpen), (e) => e.code === CODE && /can be changed by another user/.test(e.message));
+  const openTop = folder();
+  fs.chmodSync(openTop, 0o777);
+  const realUp = folder();
+  fs.mkdirSync(path.join(realUp, 'ledger'), { mode: 0o700 });
+  fs.symlinkSync(realUp, path.join(openTop, 'up'));
+  await assert.rejects(OPEN(path.join(openTop, 'up', 'ledger')), (e) => e.code === CODE && /can be changed by another user/.test(e.message));
+  const chainOwn = folder();
+  const chainOpen = folder();
+  fs.chmodSync(chainOpen, 0o777);
+  const chainTarget = folder();
+  fs.mkdirSync(path.join(chainTarget, 'ledger'), { mode: 0o700 });
+  fs.symlinkSync(chainTarget, path.join(chainOpen, 'L2'));
+  fs.symlinkSync(path.join(chainOpen, 'L2'), path.join(chainOwn, 'L1'));
+  await assert.rejects(OPEN(path.join(chainOwn, 'L1', 'ledger')), (e) => e.code === CODE && /can be changed by another user/.test(e.message));
+  const homeLike = folder();
+  if (process.platform === 'darwin') spawnSync('chmod', ['+a', 'everyone deny delete', homeLike]);
+  const denied = path.join(homeLike, 'ledger');
+  fs.mkdirSync(denied, { mode: 0o700 });
+  await OPEN(denied);
+  if (process.platform === 'darwin') spawnSync('chmod', ['-a', 'everyone deny delete', homeLike]);
+});
