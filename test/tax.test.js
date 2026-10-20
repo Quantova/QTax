@@ -4,13 +4,14 @@
 'use strict';
 
 const path = require('path');
+const { createRequire } = require('module');
 const test = require('node:test');
 const assert = require('node:assert');
 const q = require('..');
 const { network, stamper, iso, failing, proofs, SEED } = require('./chain');
 
 const qstampBase = path.dirname(require.resolve('@quantovainc/qstamp'));
-const { core } = require(require.resolve('@quantovainc/qcore', { paths: [qstampBase] }));
+const { core } = createRequire(path.join(qstampBase, 'package.json'))('@quantovainc/qcore');
 
 async function paid() {
   const now = Math.floor(Date.now() / 1000);

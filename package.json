@@ -1,6 +1,6 @@
 {
   "name": "@quantovainc/qtax",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Post quantum tax integrity for governments. Seals tax filings, electronic invoices, assessments and refunds with ML-DSA-65 under FIPS 204 and Quantova time proofs, so an altered filing, an invented invoice or an unsupported refund is detected.",
   "main": "index.js",
   "types": "index.d.ts",
@@ -34,8 +34,12 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "dependencies": {
-    "@quantovainc/qstamp": "0.3.0"
+    "@quantovainc/qstamp": "0.4.0"
   },
   "keywords": [
     "post-quantum",
