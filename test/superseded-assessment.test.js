@@ -6,17 +6,17 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const q = require('..');
-const { network } = require('./chain');
+const { network , PARTY_SECRET } = require('./chain');
 
 function assessed() {
   const now = Date.now();
   const net = network(Math.floor(now / 1000));
   const intake = q.generateKey();
   const assessor = q.generateKey();
-  const filing = q.file({ key: intake, taxpayerRef: q.commitParty('TIN 1').ref, period: '2025', form: 'ITR', contentDigest: 'a'.repeat(64), contentSize: 10, receivedAt: new Date(now - 7200000).toISOString() });
-  const first = q.assess({ key: assessor, filing, currency: 'EUR', refundDue: '500', outcomeDigest: 'b'.repeat(64), decidedAt: new Date(now - 3600000).toISOString() });
-  const second = q.assess({ key: assessor, filing, currency: 'EUR', refundDue: '0', outcomeDigest: 'c'.repeat(64), supersedes: first, decidedAt: new Date(now - 1800000).toISOString() });
-  const base = Object.assign({ type: 'assessment', intakeKeys: [q.keyId(intake)], assessorKeys: [q.keyId(assessor)], filing, requireAnchor: false, at: new Date(now).toISOString() }, net.opts);
+  const filing = q.file({ key: intake, taxpayer: 'TIN 1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'ITR', contentDigest: 'a'.repeat(64), contentSize: 10, receivedAt: new Date(now - 7200000).toISOString() });
+  const first = q.assess({ ledger: false, key: assessor, filing, currency: 'EUR', refundDue: '500', outcomeDigest: 'b'.repeat(64), decidedAt: new Date(now - 3600000).toISOString() });
+  const second = q.assess({ ledger: false, key: assessor, filing, currency: 'EUR', refundDue: '0', outcomeDigest: 'c'.repeat(64), supersedes: first, decidedAt: new Date(now - 1800000).toISOString() });
+  const base = Object.assign({ type: 'assessment', intakeKeys: [q.keyId(intake)], assessorKeys: [q.keyId(assessor)], filing, otherFilings: [filing], requireAnchor: false, at: new Date(now).toISOString() }, net.opts);
   return { first, second, base };
 }
 

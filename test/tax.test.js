@@ -8,7 +8,7 @@ const { createRequire } = require('module');
 const test = require('node:test');
 const assert = require('node:assert');
 const q = require('..');
-const { network, stamper, iso, failing, proofs, SEED } = require('./chain');
+const { network, stamper, iso, failing, proofs, SEED , PARTY_SECRET } = require('./chain');
 
 const qstampBase = path.dirname(require.resolve('@quantovainc/qstamp'));
 const { core } = createRequire(path.join(qstampBase, 'package.json'))('@quantovainc/qcore');
@@ -19,14 +19,14 @@ async function paid() {
   const at = stamper(q, net);
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey(), stranger: q.generateKey() };
   const t0 = now - 80000;
-  const filing = await at(q.file({ key: K.intake, taxpayerRef: q.commitParty('NL-1').ref, period: '2025', form: 'IB', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
-  const other = await at(q.file({ key: K.intake, taxpayerRef: q.commitParty('NL-2').ref, period: '2025', form: 'IB', content: Buffer.from('other return'), receivedAt: iso(t0) }), t0 + 5);
-  const assessment = await at(q.assess({ key: K.assessor, filing, outcome: Buffer.from('ok'), currency: 'EUR', refundDue: '1000', decidedAt: iso(t0 + 10) }), t0 + 15);
-  const foreign = await at(q.assess({ key: K.assessor, filing: other, outcome: Buffer.from('ok'), currency: 'EUR', refundDue: '10', decidedAt: iso(t0 + 10) }), t0 + 15);
-  const rogue = await at(q.assess({ key: K.stranger, filing, outcome: Buffer.from('other'), currency: 'EUR', refundDue: '9000', decidedAt: iso(t0 + 30) }), t0 + 35);
-  const refund = await at(q.refund({ key: K.officer, assessment, amount: '500', first: true, paidAt: iso(t0 + 20) }), t0 + 25);
+  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
+  const other = await at(q.file({ key: K.intake, taxpayer: 'NL-2', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('other return'), receivedAt: iso(t0) }), t0 + 5);
+  const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('ok'), currency: 'EUR', refundDue: '1000', decidedAt: iso(t0 + 10) }), t0 + 15);
+  const foreign = await at(q.assess({ ledger: false, key: K.assessor, filing: other, outcome: Buffer.from('ok'), currency: 'EUR', refundDue: '10', decidedAt: iso(t0 + 10) }), t0 + 15);
+  const rogue = await at(q.assess({ ledger: false, key: K.stranger, filing, outcome: Buffer.from('other'), currency: 'EUR', refundDue: '9000', decidedAt: iso(t0 + 30) }), t0 + 35);
+  const refund = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: '500', first: true, paidAt: iso(t0 + 20) }), t0 + 25);
   net.chain.block(now);
-  const opts = Object.assign({ type: 'refund', assessment, filing, allSupplied: true, refunds: [refund], otherAssessments: [assessment], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, net.opts);
+  const opts = Object.assign({ type: 'refund', assessment, filing, otherFilings: [filing], allSupplied: true, refunds: [refund], otherAssessments: [assessment], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, net.opts);
   return { net, refund, assessment, foreign, rogue, opts };
 }
 

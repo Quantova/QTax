@@ -7,6 +7,7 @@ const assert = require('node:assert');
 const q = require('..');
 const F = require('../lib/format');
 const { cliCampaign, runCli, tempDir, SAYS_VALID } = require('./fuzz');
+const { PARTY_SECRET } = require('./chain');
 
 const BIN = path.join(__dirname, '..', 'bin', 'qtax.js');
 const ENVELOPE_MAX = 1024 * 1024;
@@ -16,8 +17,8 @@ function records() {
   const iso = (ms) => new Date(ms).toISOString();
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey(), seller: q.generateKey(), buyer: q.generateKey() };
   const content = Buffer.from('income tax return 2025');
-  const filing = q.file({ key: K.intake, taxpayerRef: q.commitParty('NL-123456789').ref, period: '2025', form: 'IB', content, receivedAt: iso(now - 600000) });
-  const assessment = q.assess({ key: K.assessor, filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(now - 500000) });
+  const filing = q.file({ key: K.intake, taxpayer: 'NL-123456789', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(now - 600000) });
+  const assessment = q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(now - 500000) });
   const invoice = q.invoice({ key: K.seller, invoiceId: 'INV-2025-0042', buyer: q.keyId(K.buyer), document: Buffer.from('scan'), currency: 'EUR', total: '121000', tax: '21000', issuedAt: iso(now - 400000) });
   const claim = q.claim({ key: K.buyer, invoice, claimedAt: iso(now - 300000) });
   return { at: iso(now), K, filing, assessment, invoice, claim, contentDigest: F.sha3(content).toString('hex') };
@@ -42,7 +43,7 @@ test('hostile invoice files make every command that reads an envelope exit non z
     const tail = ['--allow-unanchored', '--at', w.at];
     const seller = ['--seller', q.keyId(w.K.seller)];
     await control(['verify', good, '--type', 'invoice'].concat(seller, tail), good, w.invoice);
-    await control(['verify', claim, '--type', 'claim', '--invoice', good].concat(seller, tail), good, w.invoice);
+    await control(['verify', claim, '--type', 'claim', '--invoice', good, '--other-claim', claim].concat(seller, tail), good, w.invoice);
     const results = await cliCampaign({
       bin: BIN,
       tag: 'qtax-cli',
@@ -51,7 +52,7 @@ test('hostile invoice files make every command that reads an envelope exit non z
       commands: [
         (file) => ['verify', file, '--type', 'invoice'].concat(seller, tail),
         (file) => ['verify', file, '--type', 'invoice'].concat(seller, tail, ['--json']),
-        (file) => ['verify', claim, '--type', 'claim', '--invoice', file].concat(seller, tail),
+        (file) => ['verify', claim, '--type', 'claim', '--invoice', file, '--other-claim', claim].concat(seller, tail),
         (file) => ['complete', file, '--pending', pending],
       ],
     });
@@ -72,7 +73,7 @@ test('hostile filing files make verify exit non zero quickly and never print VAL
     const intake = ['--intake', q.keyId(w.K.intake)];
     const assessed = ['--type', 'assessment', '--assessor', q.keyId(w.K.assessor), '--all-supplied', '--other-assessment', assessment].concat(intake);
     await control(['verify', good, '--type', 'filing', '--content-digest', w.contentDigest].concat(intake, tail), good, w.filing);
-    await control(['verify', assessment, '--filing', good].concat(assessed, tail), good, w.filing);
+    await control(['verify', assessment, '--filing', good, '--other-filing', good].concat(assessed, tail), good, w.filing);
     const results = await cliCampaign({
       bin: BIN,
       tag: 'qtax-cli',
@@ -80,7 +81,7 @@ test('hostile filing files make verify exit non zero quickly and never print VAL
       validText: JSON.stringify(w.filing),
       commands: [
         (file) => ['verify', file, '--type', 'filing', '--content-digest', w.contentDigest].concat(intake, tail),
-        (file) => ['verify', assessment, '--filing', file].concat(assessed, tail, ['--json']),
+        (file) => ['verify', assessment, '--filing', file, '--other-filing', file].concat(assessed, tail, ['--json']),
       ],
     });
     t.diagnostic(results.length + ' runs, slowest ' + Math.max(...results.map((r) => r.ms)) + ' ms');

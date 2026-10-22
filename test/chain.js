@@ -153,4 +153,6 @@ function forged(receipt, timeDelta, n) {
 const iso = (s) => new Date(s * 1000).toISOString();
 const failing = (r) => r.checks.filter((c) => !c.ok).map((c) => c.name + ': ' + c.detail);
 
-module.exports = { network, stamper, endpoint, forged, iso, failing, proofs, bech32m, SEED };
+const PARTY_SECRET = Uint8Array.from({ length: 32 }, (_, i) => (17 + 5 * i) & 255);
+
+module.exports = { network, stamper, endpoint, forged, iso, failing, proofs, bech32m, SEED, PARTY_SECRET };

@@ -4,7 +4,7 @@
 export type EnvelopeType = 'filing' | 'invoice' | 'claim' | 'assessment' | 'refund';
 
 export interface Envelope {
-  format: 'qtax/1';
+  format: 'qtax/2';
   type: EnvelopeType;
   algorithm: 'ML-DSA-65';
   signer: { id: string; publicKey: string };
@@ -33,7 +33,10 @@ export interface SeriesLedger {
 
 export interface FileOptions {
   key: Uint8Array;
-  taxpayerRef: string;
+  taxpayer: string;
+  partySecret: Uint8Array;
+  taxpayerRef?: string;
+  ledger: string | SeriesLedger | false;
   period: string;
   form: string;
   content?: Uint8Array;
@@ -72,7 +75,7 @@ export interface AssessOptions {
   currency: string;
   refundDue?: string;
   supersedes?: Envelope;
-  ledger?: string | SeriesLedger;
+  ledger: string | SeriesLedger | false;
   decidedAt?: string;
   note?: string;
 }
@@ -83,7 +86,7 @@ export interface RefundOptions {
   amount: string;
   previous?: Envelope;
   first?: boolean;
-  ledger?: string | SeriesLedger;
+  ledger: string | SeriesLedger | false;
   currency?: string;
   paidAt?: string;
   note?: string;
@@ -124,6 +127,7 @@ export interface VerifyOptions {
   refunds?: Envelope[];
   previousRefunds?: Envelope[];
   otherAssessments?: Envelope[];
+  otherFilings?: Envelope[];
   otherClaims?: Envelope[];
   otherInvoices?: Envelope[];
   keyStatus?: (keyId: string) => KeyStatus | Promise<KeyStatus>;
@@ -168,22 +172,23 @@ export function generateKey(): Uint8Array;
 export function publicKey(key: Uint8Array): Uint8Array;
 export function keyId(key: Uint8Array): string;
 export function describeKey(key: Uint8Array): KeyDescription;
-export function commitParty(identity: string): { salt: Uint8Array; ref: string };
-export function file(options: FileOptions): Envelope;
+export function commitParty(identity: string, options: { secret: Uint8Array } | { salt: Uint8Array }): { salt: Uint8Array; ref: string };
+export function file(options: FileOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
+export function file(options: FileOptions & { ledger: false }): Envelope;
 export function invoice(options: InvoiceOptions): Envelope;
 export function claim(options: ClaimOptions): Envelope;
 export function assess(options: AssessOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
-export function assess(options: AssessOptions): Envelope;
+export function assess(options: AssessOptions & { ledger: false }): Envelope;
 export function refund(options: RefundOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
-export function refund(options: RefundOptions): Envelope;
+export function refund(options: RefundOptions & { ledger: false }): Envelope;
 export function folderLedger(folder: string): SeriesLedger;
-export function ledgerLatest(ledger: string | SeriesLedger, type: 'assessment' | 'refund', rootFilingRef: string): Promise<Envelope | null>;
+export function ledgerLatest(ledger: string | SeriesLedger, type: 'filing' | 'assessment' | 'refund', rootFilingRef: string): Promise<Envelope | null>;
 export function anchor(envelopes: Envelope | Envelope[], options: AnchorOptions): Promise<Envelope[]>;
 export function complete(envelopes: Envelope | Envelope[], pending: unknown, options?: { rpc?: string | string[]; client?: unknown; clients?: Array<string | unknown>; trustSingleEndpoint?: boolean; allowLoopback?: boolean; endpointAllowList?: string[]; timeoutMs?: number }): Promise<Envelope[]>;
 export function verify(envelope: unknown, options: VerifyOptions): Promise<VerifyResult>;
 export function refOf(envelope: Envelope): string;
 export function anchorDigest(envelope: Envelope): string;
-export const FORMAT: 'qtax/1';
+export const FORMAT: 'qtax/2';
 export const ALGORITHM: 'ML-DSA-65';
 export const KIND: 1101;
 export const TYPES: readonly EnvelopeType[];

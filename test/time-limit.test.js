@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const q = require('..');
-const { network, stamper, iso } = require('./chain');
+const { network, stamper, iso , PARTY_SECRET } = require('./chain');
 
 const never = () => new Promise(() => {});
 
@@ -16,14 +16,14 @@ async function world() {
   const at = stamper(q, net);
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey() };
   const t0 = now - 80000;
-  const filing = await at(q.file({ key: K.intake, taxpayerRef: q.commitParty('NL-1').ref, period: '2026 Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
-  const assessment = await at(q.assess({ key: K.assessor, filing, outcome: Buffer.from('a'), currency: 'EUR', refundDue: '5000', decidedAt: iso(t0 + 100) }), t0 + 105);
-  const refund = await at(q.refund({ key: K.officer, assessment, amount: '3000', first: true, paidAt: iso(now - 200) }), now - 100);
+  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2026 Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
+  const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('a'), currency: 'EUR', refundDue: '5000', decidedAt: iso(t0 + 100) }), t0 + 105);
+  const refund = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: '3000', first: true, paidAt: iso(now - 200) }), now - 100);
   const roles = { intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] };
   const check = (more, clients) => {
     net.chain.block(now);
     const opts = clients ? { clients, trustCustomEndpoints: true } : net.opts;
-    return q.verify(refund, Object.assign({ type: 'refund', assessment, filing, allSupplied: true, refunds: [refund], otherAssessments: [assessment] }, roles, opts, more));
+    return q.verify(refund, Object.assign({ type: 'refund', assessment, filing, otherFilings: [filing], allSupplied: true, refunds: [refund], otherAssessments: [assessment] }, roles, opts, more));
   };
   return { net, check };
 }

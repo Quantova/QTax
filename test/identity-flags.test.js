@@ -37,7 +37,9 @@ test('a personal identifier given on the command line is refused, only an identi
   fs.writeFileSync(file, ID + '\n', { mode: 0o600 });
   const salt = path.join(dir, 'c.salt');
   const modes = help.stdout.includes('--random-salt') ? ['--random-salt'] : [];
-  const ok = run(['commit-party', '--identity-file', file, '--salt-out', salt].concat(modes), dir);
+  const secret = path.join(dir, 'party.secret');
+  assert.strictEqual(run(['keygen', secret], dir).status, 0);
+  const ok = run(['commit-party', '--identity-file', file, '--party-secret-file', secret, '--salt-out', salt].concat(modes), dir);
   assert.strictEqual(ok.status, 0, ok.stderr);
   assert.ok(fs.existsSync(salt));
   assert.ok(!ok.stdout.includes(ID));

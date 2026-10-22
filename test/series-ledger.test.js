@@ -49,7 +49,9 @@ test('a custom ledger store is trusted only when compareAndSwap answers exactly 
   const w = await honest();
   const { q, K, all } = w;
   const assess = (ledger) => q.assess({ key: K.assessor, filing: all.filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(w.now - 60), ledger });
-  const refund = (ledger) => q.refund({ key: K.officer, assessment: all.assessment, amount: '1000', first: true, paidAt: iso(w.now - 60), ledger });
+  const held = 'qtax.assessment.' + all.assessment.statement.rootFilingRef;
+  const withAssessment = (s) => ({ read: async (name) => (name === held ? state(q, held, 1, all.assessment) : s.read(name)), compareAndSwap: s.compareAndSwap });
+  const refund = (ledger) => q.refund({ key: K.officer, assessment: all.assessment, amount: '1000', first: true, paidAt: iso(w.now - 60), ledger: withAssessment(ledger) });
   for (const make of [assess, refund]) {
     assert.strictEqual((await make(store(true))).statement.seq, 1);
     await assert.rejects(make(store(false)), (e) => refused(e) && /another/.test(e.message));
@@ -91,6 +93,7 @@ test('the folder ledger never follows a symbolic link, refuses an entry filed un
   fs.writeFileSync(path.join(dir, name + '.2.json'), state(q, name, 1, first));
   await assert.rejects(q.ledgerLatest(dir, 'refund', root), (e) => refused(e) && /does not hold position 2/.test(e.message));
   fs.writeFileSync(path.join(dir, name + '.2.json'), state(q, name, 2, all.refund));
+  fs.writeFileSync(path.join(dir, 'qtax.assessment.' + root + '.1.json'), state(q, 'qtax.assessment.' + root, 1, all.assessment));
   for (let i = 0; i < 200; i += 1) fs.writeFileSync(path.join(dir, 'qtax.refund.' + crypto.randomBytes(32).toString('hex') + '.1.json'), '');
   const list = fs.readdirSync;
   fs.readdirSync = () => {

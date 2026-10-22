@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const q = require('..');
 const F = require('../lib/format');
 const native = require('../lib/native');
-const { network, stamper, iso, failing } = require('./chain');
+const { network, stamper, iso, failing , PARTY_SECRET } = require('./chain');
 const { mulberry32, iterations, describe } = require('./fuzz');
 
 const ROUNDS = iterations(50);
@@ -66,13 +66,13 @@ async function books(rng) {
   let t = now - 80000;
   const next = () => (t += 20);
   const content = Buffer.from('return ' + r.hex(12));
-  const filing = await at(q.file({ key: K.intake, taxpayerRef: q.commitParty('NL-' + r.digits(9)).ref, period: '2025', form: 'IB', content, receivedAt: iso(next()) }), t + 1);
+  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(next()) }), t + 1);
   const due = BigInt(r.digits(2 + r.int(28)));
-  const assessment = await at(q.assess({ key: K.assessor, filing, outcome: Buffer.from('decision ' + due), currency: 'EUR', refundDue: due.toString(), decidedAt: iso(next()) }), t + 1);
+  const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('decision ' + due), currency: 'EUR', refundDue: due.toString(), decidedAt: iso(next()) }), t + 1);
   const a1 = 1n + r.below(due - 1n);
-  const first = await at(q.refund({ key: K.officer, assessment, amount: a1.toString(), first: true, paidAt: iso(next()) }), t + 1);
+  const first = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: a1.toString(), first: true, paidAt: iso(next()) }), t + 1);
   const a2 = 1n + r.below(due - a1);
-  const second = await at(q.refund({ key: K.officer, assessment, amount: a2.toString(), previous: first, paidAt: iso(next()) }), t + 1);
+  const second = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: a2.toString(), previous: first, paidAt: iso(next()) }), t + 1);
   const forge = (key, fields) => {
     const st = Object.assign({}, second.statement, { refundId: r.hex(32), officerKeyId: q.keyId(key), paidAt: iso(next()) }, fields);
     return at(signRaw(r, 'refund', st, key), t + 1);
@@ -80,7 +80,7 @@ async function books(rng) {
   const check = (refund, supplied) => {
     net.chain.block(now);
     const s = supplied || {};
-    return q.verify(refund, Object.assign({ type: 'refund', assessment: s.assessment || assessment, filing, previousRefunds: s.previous || [first], otherAssessments: [s.assessment || assessment], allSupplied: true, at: iso(now) }, roles, net.opts));
+    return q.verify(refund, Object.assign({ type: 'refund', assessment: s.assessment || assessment, filing, previousRefunds: s.previous || [first], otherAssessments: [s.assessment || assessment], otherFilings: [filing], allSupplied: true, at: iso(now) }, roles, net.opts));
   };
   return { r, K, next, assessment, first, second, due, a1, a2, forge, check };
 }
@@ -217,7 +217,7 @@ test('a filing whose content size was changed never verifies against the return 
   let tt = now - 80000;
   for (let round = 0; round < ROUNDS; round += 1) {
     const content = Buffer.from('return ' + r.hex(2 + r.int(200)));
-    const filing = await at(q.file({ key: intake, taxpayerRef: q.commitParty('NL-' + r.digits(9)).ref, period: '2025', form: 'IB', content, receivedAt: iso((tt += 20)) }), tt + 1);
+    const filing = await at(q.file({ key: intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso((tt += 20)) }), tt + 1);
     net.chain.block(now);
     const v = (env) => q.verify(env, Object.assign({ type: 'filing', content, intakeKeys: [q.keyId(intake)], at: iso(now) }, net.opts));
     const honest = await v(filing);
