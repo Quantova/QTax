@@ -77,10 +77,11 @@ test('an anchor that is not proven makes the result indeterminate and never vali
 
 test('endpoints chosen by the caller need trustCustomEndpoints, loopback needs allowLoopback and the anchor sender is checked', async () => {
   const p = await paid();
-  const o = Object.assign({}, p.opts, { at: new Date().toISOString() });
+  const o = Object.assign({}, p.opts, { at: new Date().toISOString(), network: 'testnet' });
   delete o.trustCustomEndpoints;
   const untrusted = await q.verify(p.refund, o);
   assert.strictEqual(untrusted.status, 'indeterminate');
+  await assert.rejects(q.verify(p.refund, Object.assign({}, o, { network: 'custom' })), /trustCustomEndpoints/);
   const loop = Object.assign({}, p.opts, { at: new Date().toISOString(), rpc: 'http://127.0.0.1:9' });
   delete loop.clients;
   const lr = await q.verify(p.refund, loop);

@@ -110,6 +110,7 @@ export interface AnchorOptions {
 
 export interface VerifyOptions {
   type: EnvelopeType;
+  network: 'testnet' | 'custom';
   intakeKeys?: TrustedKey[];
   assessorKeys?: TrustedKey[];
   officerKeys?: TrustedKey[];

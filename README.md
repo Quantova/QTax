@@ -138,9 +138,9 @@ qtax claim --key buyer.key --invoice invoice.json --out claim.json
 qtax assess --key assessor.key --filing filing.json --outcome assessment.pdf --currency EUR --refund-due 5000 --ledger ledger --out assessment.json
 qtax refund --key officer.key --assessment assessment.json --amount 3000 --first --ledger ledger --out refund1.json
 qtax refund --key officer.key --assessment assessment.json --amount 2000 --previous-refund refund1.json --ledger ledger --out refund2.json
-qtax anchor filing.json assessment.json refund1.json refund2.json --seed-file account.key --trust-single-endpoint
+qtax anchor filing.json assessment.json refund1.json refund2.json --network testnet --seed-file account.key --trust-single-endpoint
 
-qtax verify refund2.json --type refund --intake intake.pub.json --assessor assessor.pub.json --officer officer.pub.json --assessment assessment.json --filing filing.json --refund refund1.json --refund refund2.json --other-assessment assessment.json --all-supplied --trust-single-endpoint
+qtax verify refund2.json --type refund --network testnet --intake intake.pub.json --assessor assessor.pub.json --officer officer.pub.json --assessment assessment.json --filing filing.json --refund refund1.json --refund refund2.json --other-assessment assessment.json --all-supplied --trust-single-endpoint
 ```
 
 The file account.key holds the 32 byte seed of a funded Quantova account, as 64 hexadecimal characters, which pays for anchoring. It is separate from the signing keys of officials.
@@ -163,7 +163,7 @@ The command exits with status 0 when the result is valid, 1 when it is invalid, 
 
 ## Network
 
-The live Quantova network is named Q-test-net-01. Its genesis hash and the official Qstamp contract that records anchors are pinned in the Qstamp release this SDK depends on. The public endpoint is https://q-test-net-01.quantova.org. By default verification consults the official endpoints of the network. Endpoints chosen by the verifier are given with the rpc or clients option, or with --rpc once for each on the command line, and verification consults them only with trustCustomEndpoints, or --trust-custom-endpoints. An endpoint on a loopback address is refused unless allowLoopback, or --allow-loopback, is set, and an endpoint on a private network address unless it is named in endpointAllowList, or with --allow-endpoint. The option expectedSender, or --expect-sender, names the Quantova accounts entitled to anchor records, and an anchor signed by any other account is invalid. Anchoring accepts chain data only when at least two endpoints run by different operators agree, and the option trustSingleEndpoint, or --trust-single-endpoint, relies on one endpoint for anchoring and for the time of the chain.
+The live Quantova network is named Q-test-net-01. Its genesis hash and the official Qstamp contract that records anchors are pinned in the Qstamp release this SDK depends on. The public endpoint is https://q-test-net-01.quantova.org. By default verification consults the official endpoints of the network. Every verification names the network its records were anchored on with the network option, or --network on the command line, testnet for the public network or custom for a chain reached only through endpoints the verifier chose, and an anchor recorded on any other network fails. Endpoints chosen by the verifier are given with the rpc or clients option, or with --rpc once for each on the command line, and verification consults them only with trustCustomEndpoints, or --trust-custom-endpoints. An endpoint on a loopback address is refused unless allowLoopback, or --allow-loopback, is set, and an endpoint on a private network address unless it is named in endpointAllowList, or with --allow-endpoint. The option expectedSender, or --expect-sender, names the Quantova accounts entitled to anchor records, and an anchor signed by any other account is invalid. Anchoring accepts chain data only when at least two endpoints run by different operators agree, and the option trustSingleEndpoint, or --trust-single-endpoint, relies on one endpoint for anchoring and for the time of the chain.
 
 ## Licence
 

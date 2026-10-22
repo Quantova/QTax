@@ -22,7 +22,7 @@ async function world() {
   const roles = { intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] };
   const check = (more, clients) => {
     net.chain.block(now);
-    const opts = clients ? { clients, trustCustomEndpoints: true } : net.opts;
+    const opts = clients ? { network: 'custom', clients, trustCustomEndpoints: true } : net.opts;
     return q.verify(refund, Object.assign({ type: 'refund', assessment, filing, otherFilings: [filing], allSupplied: true, refunds: [refund], otherAssessments: [assessment] }, roles, opts, more));
   };
   return { net, check };

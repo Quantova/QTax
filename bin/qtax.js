@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const qx = require('..');
+const qstamp = require('@quantovainc/qstamp');
 
 const ENVELOPE_MAX = 1024 * 1024;
 const KEY_JSON_MAX = 64 * 1024;
@@ -27,10 +28,10 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
               [--supersedes FILE] (--ledger DIR | --no-ledger) [--note TEXT] --out FILE
   qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) (--ledger DIR | --no-ledger)
               [--note TEXT] --out FILE
-  qtax anchor <envelope>... --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
+  qtax anchor <envelope>... --network NAME --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
   qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]...
                 [--allow-loopback]
-  qtax verify <envelope> --type TYPE [options for that type] [--allow-unanchored] [--at TIME] [--max-anchor-delay SECONDS]
+  qtax verify <envelope> --type TYPE --network NAME [options for that type] [--allow-unanchored] [--at TIME] [--max-anchor-delay SECONDS]
               [--expect-sender ADDRESS]... [--rpc URL]... [--trust-custom-endpoints] [--trust-single-endpoint]
               [--allow-endpoint HOST]... [--allow-loopback] [--json]
 
@@ -65,7 +66,9 @@ read from the chain, and verification stops with exit code 2 when it cannot be r
 proven by a finality certificate or by official endpoints of two different operators, any other anchor is unproven,
 treated as not anchored, and the result is INDETERMINATE. Endpoints given with --rpc are consulted by verify only with --trust-custom-endpoints, loopback endpoints only
 with --allow-loopback and private network endpoints only when named with --allow-endpoint. --expect-sender names
-the account that must have signed each anchor.
+the account that must have signed each anchor. --network names the network the records are anchored on, testnet for
+the public network, and verify also takes custom for a chain reached only through endpoints given with --rpc and
+--trust-custom-endpoints. An anchor recorded on another network fails.
 
 If anchor is interrupted after its transaction may have been sent, it keeps a pending stamp beside each envelope and
 refuses to anchor them again. Finish it with complete, giving the same envelopes in the same order.
@@ -76,6 +79,13 @@ function usageError(message) {
   const e = new Error(message);
   e.usage = true;
   return e;
+}
+
+function networkFlag(flags, verifying) {
+  const names = Object.keys(qstamp.NETWORKS).concat(verifying ? ['custom'] : []);
+  if (flags.network === undefined) throw usageError('--network is required');
+  if (!names.includes(flags.network)) throw usageError('--network is one of ' + names.join(', ') + ', the network the records are anchored on');
+  return flags.network;
 }
 
 function endpointOptions(flags) {
@@ -97,12 +107,12 @@ const SPEC = {
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
   assess: { flags: ['force', 'no-ledger'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'ledger', 'note', 'out'] },
   refund: { flags: ['force', 'first', 'no-ledger'], values: ['key', 'assessment', 'amount', 'previous-refund', 'ledger', 'note', 'out'] },
-  anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee'], multi: ['rpc', 'allow-endpoint'] },
+  anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee', 'network'], multi: ['rpc', 'allow-endpoint'] },
   complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'network'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
 };
 
-const VERIFY_COMMON = ['type', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback', 'allow-endpoint', 'expect-sender'];
+const VERIFY_COMMON = ['type', 'network', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback', 'allow-endpoint', 'expect-sender'];
 const VERIFY_BY_TYPE = {
   filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
   invoice: ['seller', 'document'],
@@ -440,6 +450,7 @@ async function cmdAnchor(positional, flags) {
   const envs = positional.map((f) => readJson(f, 'envelope', true, ENVELOPE_MAX));
   let index = 0;
   if (flags.index !== undefined) index = seqFlag(flags.index, 'index');
+  const network = networkFlag(flags, false);
   const seed = readSeed(flags['seed-file'] || process.env.QSTAMP_SEED_FILE, '--seed-file of a funded Quantova account');
   let saved = false;
   const keep = (pending) => {
@@ -449,7 +460,7 @@ async function cmdAnchor(positional, flags) {
   };
   let anchored;
   try {
-    anchored = await qx.anchor(envs, { seed, index, network: 'testnet', ...endpointOptions(flags), maxFee: flags['max-fee'], onPending: keep });
+    anchored = await qx.anchor(envs, { seed, index, network, ...endpointOptions(flags), maxFee: flags['max-fee'], onPending: keep });
   } catch (e) {
     if (e && e.pending && typeof e.pending === 'object') {
       let message = 'the anchoring transaction may already have been sent, ' + friendly(e);
@@ -800,7 +811,7 @@ async function cmdVerify(positional, flags) {
   const allowed = new Set(VERIFY_COMMON.concat(VERIFY_BY_TYPE[type]));
   for (const k of Object.keys(flags)) if (!allowed.has(k)) throw usageError('--' + k + ' does not apply when verifying ' + (type === 'invoice' || type === 'assessment' ? 'an ' : 'a ') + type);
   const env = readJson(positional[0], 'envelope', true);
-  const opts = { type, requireAnchor: !flags['allow-unanchored'] };
+  const opts = { type, network: networkFlag(flags, true), requireAnchor: !flags['allow-unanchored'] };
   for (const [flag, name] of [['intake', 'intakeKeys'], ['assessor', 'assessorKeys'], ['officer', 'officerKeys']]) {
     const list = capList(flags[flag], flag, 64);
     if (list.length) opts[name] = list.map((k) => keyRef(k, flag));
