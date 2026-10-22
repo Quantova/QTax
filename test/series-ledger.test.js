@@ -127,8 +127,9 @@ test('the command line refuses an assessment or a refund unless --ledger or --no
   const outcome = write('outcome.pdf', 'decision');
   const ledger = path.join(dir, 'ledger');
   fs.mkdirSync(ledger);
-  const run = (args) => spawnSync(process.execPath, [BIN].concat(args), { encoding: 'utf8', cwd: dir });
-  const assess = (more, out) => run(['assess', '--key', assessor, '--filing', filing, '--outcome', outcome, '--currency', 'EUR', '--refund-due', '5000', '--out', path.join(dir, out)].concat(more));
+  const due = write('due.txt', '5000\n');
+  const run = (args, input) => spawnSync(process.execPath, [BIN].concat(args), { encoding: 'utf8', cwd: dir, input });
+  const assess = (more, out) => run(['assess', '--key', assessor, '--filing', filing, '--outcome', outcome, '--currency', 'EUR', '--refund-due-file', due, '--out', path.join(dir, out)].concat(more));
   const bare = assess([], 'a0.json');
   assert.strictEqual(bare.status, 64, bare.stderr);
   assert.match(bare.stderr, /an assessment is part of the series of its return, so give --ledger/);
@@ -142,7 +143,7 @@ test('the command line refuses an assessment or a refund unless --ledger or --no
   assert.match(two.stderr, /already holds/);
   assert.strictEqual(assess(['--no-ledger'], 'a4.json').status, 0);
   const assessment = path.join(dir, 'a2.json');
-  const refund = (more, out) => run(['refund', '--key', officer, '--assessment', assessment, '--amount', '1000', '--first', '--out', path.join(dir, out)].concat(more));
+  const refund = (more, out) => run(['refund', '--key', officer, '--assessment', assessment, '--amount-file', '-', '--first', '--out', path.join(dir, out)].concat(more), '1000\n');
   const rbare = refund([], 'r0.json');
   assert.strictEqual(rbare.status, 64, rbare.stderr);
   assert.match(rbare.stderr, /a refund is part of the series of its return/);

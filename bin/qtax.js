@@ -20,14 +20,14 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
   qtax key <keyfile>
   qtax commit-party --identity-file FILE --party-secret-file FILE --salt-out FILE
   qtax file --key <intake keyfile> --taxpayer-identity-file FILE --party-secret-file FILE --period TEXT --form TEXT
-            (--content FILE | --content-digest HEX --content-size N) [--amends FILE] (--ledger DIR | --no-ledger) [--note TEXT] --out FILE
-  qtax invoice --key <seller keyfile> --invoice-id TEXT --buyer KEY (--document FILE | --invoice-digest HEX)
-               --currency CODE --total N --tax N [--note TEXT] --out FILE
-  qtax claim --key <buyer keyfile> --invoice FILE [--note TEXT] --out FILE
-  qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due N
-              [--supersedes FILE] (--ledger DIR | --no-ledger) [--note TEXT] --out FILE
-  qtax refund --key <officer keyfile> --assessment FILE --amount N (--previous-refund FILE | --first) (--ledger DIR | --no-ledger)
-              [--note TEXT] --out FILE
+            (--content FILE | --content-digest HEX --content-size N) [--amends FILE] (--ledger DIR | --no-ledger) [--note-file FILE] --out FILE
+  qtax invoice --key <seller keyfile> --invoice-id-file FILE --buyer KEY (--document FILE | --invoice-digest HEX)
+               --currency CODE --total-file FILE --tax-file FILE [--note-file FILE] --out FILE
+  qtax claim --key <buyer keyfile> --invoice FILE [--note-file FILE] --out FILE
+  qtax assess --key <assessor keyfile> --filing FILE (--outcome FILE | --outcome-digest HEX) --currency CODE --refund-due-file FILE
+              [--supersedes FILE] (--ledger DIR | --no-ledger) [--note-file FILE] --out FILE
+  qtax refund --key <officer keyfile> --assessment FILE --amount-file FILE (--previous-refund FILE | --first) (--ledger DIR | --no-ledger)
+              [--note-file FILE] --out FILE
   qtax anchor <envelope>... --network NAME --seed-file <file> [--index N] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]... [--allow-loopback] [--max-fee N]
   qtax complete <envelope>... --pending FILE [--tx ID] [--rpc URL]... [--trust-single-endpoint] [--allow-endpoint HOST]...
                 [--allow-loopback]
@@ -51,7 +51,8 @@ capital letters, normally an ISO 4217 currency code. Documents are hashed with S
 leave this machine. A taxpayer is named only by a commitment derived from the party secret of the authority, a key file
 written by keygen and kept like a signing key, so the same taxpayer always receives the same commitment. commit-party
 writes the salt of that commitment for proofs, and identities are read from files only, so they never appear in the shell
-history or the process list. A filing given --ledger is refused when the folder already holds an original return of the
+history or the process list. Notes, invoice ids and amounts are read the same way, each from the file named by its -file
+option, or from standard input when the file is -, and only one value can come from standard input. A filing given --ledger is refused when the folder already holds an original return of the
 same taxpayer, period and form, and --other-filing gives the filings held for that return so a second original is shown.
 A refund names the previous refund on the same return, or --first when none has been paid. Signing alone does not stop
 a second refund or assessment at the same position, so give --ledger with one folder shared by every signer of the
@@ -102,11 +103,11 @@ const SPEC = {
   keygen: { flags: ['force'], values: [] },
   key: { flags: [], values: [] },
   'commit-party': { flags: [], values: ['identity-file', 'party-secret-file', 'salt-out'] },
-  file: { flags: ['force', 'no-ledger'], values: ['key', 'taxpayer-identity-file', 'party-secret-file', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'ledger', 'note', 'out'] },
-  invoice: { flags: ['force'], values: ['key', 'invoice-id', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'tax', 'note', 'out'] },
-  claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'out'] },
-  assess: { flags: ['force', 'no-ledger'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'supersedes', 'ledger', 'note', 'out'] },
-  refund: { flags: ['force', 'first', 'no-ledger'], values: ['key', 'assessment', 'amount', 'previous-refund', 'ledger', 'note', 'out'] },
+  file: { flags: ['force', 'no-ledger'], values: ['key', 'taxpayer-identity-file', 'party-secret-file', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'ledger', 'note', 'note-file', 'out'] },
+  invoice: { flags: ['force'], values: ['key', 'invoice-id', 'invoice-id-file', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'total-file', 'tax', 'tax-file', 'note', 'note-file', 'out'] },
+  claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'note-file', 'out'] },
+  assess: { flags: ['force', 'no-ledger'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'refund-due-file', 'supersedes', 'ledger', 'note', 'note-file', 'out'] },
+  refund: { flags: ['force', 'first', 'no-ledger'], values: ['key', 'assessment', 'amount', 'amount-file', 'previous-refund', 'ledger', 'note', 'note-file', 'out'] },
   anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee', 'network'], multi: ['rpc', 'allow-endpoint'] },
   complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
   verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'network'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
@@ -121,6 +122,8 @@ const VERIFY_BY_TYPE = {
   refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'all-supplied'],
 };
 const IDENTITY_FILE_MAX = 4096;
+const VALUE_FILE_MAX = 64 * 1024;
+let stdinTaken = false;
 
 function parse(command, argv) {
   const spec = SPEC[command];
@@ -672,6 +675,35 @@ function identityFrom(flags, fileFlag) {
   return text.replace(/\r?\n$/, '');
 }
 
+function privateValue(flags, name, required) {
+  if (flags[name] !== undefined) throw usageError('--' + name + ' is no longer taken on the command line, where it shows in the shell history and the process list, give --' + name + '-file FILE, or --' + name + '-file - to read it from standard input');
+  const file = flags[name + '-file'];
+  if (file === undefined) {
+    if (required) throw usageError('--' + name + '-file is required');
+    return undefined;
+  }
+  let raw;
+  if (file === '-') {
+    if (stdinTaken) throw usageError('only one value can be read from standard input');
+    stdinTaken = true;
+    try {
+      raw = fs.readFileSync(0);
+    } catch (e) {
+      throw usageError('--' + name + '-file - could not read standard input');
+    }
+    if (raw.length > VALUE_FILE_MAX) throw usageError('--' + name + '-file holds more than ' + VALUE_FILE_MAX + ' bytes');
+  } else {
+    raw = readSmall(file, '--' + name + '-file', VALUE_FILE_MAX);
+  }
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+  } catch (e) {
+    throw usageError('--' + name + '-file must hold UTF-8 text');
+  }
+  return text.replace(/\r?\n$/, '');
+}
+
 async function digestFrom(flags, fileFlag, digestFlag, what, required) {
   if (flags[fileFlag] !== undefined && flags[digestFlag] !== undefined) throw usageError('give --' + fileFlag + ' or --' + digestFlag + ', not both');
   if (flags[fileFlag] !== undefined) return hashFile(flags[fileFlag], what);
@@ -681,7 +713,7 @@ async function digestFrom(flags, fileFlag, digestFlag, what, required) {
 }
 
 function amountFlag(value, name) {
-  if (!/^(0|[1-9][0-9]{0,29})$/.test(value)) throw usageError('--' + name + ' is a whole number of minor units');
+  if (!/^(0|[1-9][0-9]{0,29})$/.test(value)) throw usageError('--' + name + ' must hold a whole number of minor units');
   return value;
 }
 
@@ -707,7 +739,7 @@ async function cmdFile(positional, flags) {
   ledgerChoice('filing', flags);
   const out = need(flags, 'out');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--content', flags.content], ['--amends', flags.amends], ['--party-secret-file', flags['party-secret-file']], ['--taxpayer-identity-file', flags['taxpayer-identity-file']]]);
-  const opts = { taxpayer: identityFrom(flags, 'taxpayer-identity-file'), period: need(flags, 'period'), form: need(flags, 'form'), note: flags.note };
+  const opts = { taxpayer: identityFrom(flags, 'taxpayer-identity-file'), period: need(flags, 'period'), form: need(flags, 'form'), note: privateValue(flags, 'note', false) };
   opts.ledger = flags.ledger !== undefined ? ledgerFolder(flags.ledger) : false;
   if (flags.content !== undefined && flags['content-size'] !== undefined) throw usageError('--content-size goes with --content-digest, the size of --content is measured');
   const c = await digestFrom(flags, 'content', 'content-digest', 'return file', true);
@@ -725,7 +757,7 @@ async function cmdInvoice(positional, flags) {
   const out = need(flags, 'out');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--document', flags.document]]);
   const d = await digestFrom(flags, 'document', 'invoice-digest', 'invoice document', true);
-  const opts = { invoiceId: need(flags, 'invoice-id'), buyer: keyRef(need(flags, 'buyer'), 'buyer'), invoiceDigest: d.digest, currency: need(flags, 'currency'), total: amountFlag(need(flags, 'total'), 'total'), tax: amountFlag(need(flags, 'tax'), 'tax'), note: flags.note };
+  const opts = { invoiceId: privateValue(flags, 'invoice-id', true), buyer: keyRef(need(flags, 'buyer'), 'buyer'), invoiceDigest: d.digest, currency: need(flags, 'currency'), total: amountFlag(privateValue(flags, 'total', true), 'total-file'), tax: amountFlag(privateValue(flags, 'tax', true), 'tax-file'), note: privateValue(flags, 'note', false) };
   const env = withSeed(need(flags, 'key'), '--key', (seed) => qx.invoice(Object.assign({ key: seed }, opts)));
   writeEnvelope(out, env, flags.force);
   console.log('invoice ' + safe(env.statement.invoiceId) + ' sealed as ' + qx.refOf(env) + ', written to ' + safe(out));
@@ -737,7 +769,7 @@ async function cmdClaim(positional, flags) {
   const out = need(flags, 'out');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--invoice', flags.invoice]]);
   const inv = readJson(need(flags, 'invoice'), 'invoice', true);
-  const env = withSeed(need(flags, 'key'), '--key', (seed) => qx.claim({ key: seed, invoice: inv, note: flags.note }));
+  const env = withSeed(need(flags, 'key'), '--key', (seed) => qx.claim({ key: seed, invoice: inv, note: privateValue(flags, 'note', false) }));
   writeEnvelope(out, env, flags.force);
   console.log('claim ' + env.statement.claimId + ' sealed as ' + qx.refOf(env) + ', written to ' + safe(out));
   return 0;
@@ -778,7 +810,7 @@ async function cmdAssess(positional, flags) {
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--filing', flags.filing], ['--outcome', flags.outcome], ['--supersedes', flags.supersedes]]);
   const filing = readJson(need(flags, 'filing'), 'filing', true);
   const o = await digestFrom(flags, 'outcome', 'outcome-digest', 'assessment document', true);
-  const opts = { filing, outcomeDigest: o.digest, currency: need(flags, 'currency'), refundDue: amountFlag(need(flags, 'refund-due'), 'refund-due'), note: flags.note };
+  const opts = { filing, outcomeDigest: o.digest, currency: need(flags, 'currency'), refundDue: amountFlag(privateValue(flags, 'refund-due', true), 'refund-due-file'), note: privateValue(flags, 'note', false) };
   if (flags.supersedes !== undefined) opts.supersedes = readJson(flags.supersedes, 'superseded assessment', true);
   opts.ledger = flags.ledger !== undefined ? ledgerFolder(flags.ledger) : false;
   const env = await withSeedAsync(need(flags, 'key'), '--key', (seed) => qx.assess(Object.assign({ key: seed }, opts)));
@@ -794,7 +826,7 @@ async function cmdRefund(positional, flags) {
   if ((flags['previous-refund'] === undefined) === !flags.first) throw usageError('give --previous-refund with the last refund on this filing, or --first when none has been paid, exactly one');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--assessment', flags.assessment], ['--previous-refund', flags['previous-refund']]]);
   const assessment = readJson(need(flags, 'assessment'), 'assessment', true);
-  const opts = { assessment, amount: amountFlag(need(flags, 'amount'), 'amount'), note: flags.note };
+  const opts = { assessment, amount: amountFlag(privateValue(flags, 'amount', true), 'amount-file'), note: privateValue(flags, 'note', false) };
   if (flags.first) opts.first = true;
   else opts.previous = readJson(flags['previous-refund'], 'previous refund', true);
   opts.ledger = flags.ledger !== undefined ? ledgerFolder(flags.ledger) : false;

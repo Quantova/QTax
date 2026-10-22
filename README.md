@@ -133,17 +133,19 @@ qtax commit-party --identity-file taxpayer.txt --party-secret-file party.secret 
 
 mkdir ledger
 qtax file --key intake.key --taxpayer-identity-file taxpayer.txt --party-secret-file party.secret --period "2026 Q3" --form "VAT return" --content return.pdf --ledger ledger --out filing.json
-qtax invoice --key seller.key --invoice-id "INV 0042" --buyer buyer.pub.json --document invoice.pdf --currency EUR --total 121000 --tax 21000 --out invoice.json
+qtax invoice --key seller.key --invoice-id-file invoice-id.txt --buyer buyer.pub.json --document invoice.pdf --currency EUR --total-file total.txt --tax-file tax.txt --out invoice.json
 qtax claim --key buyer.key --invoice invoice.json --out claim.json
-qtax assess --key assessor.key --filing filing.json --outcome assessment.pdf --currency EUR --refund-due 5000 --ledger ledger --out assessment.json
-qtax refund --key officer.key --assessment assessment.json --amount 3000 --first --ledger ledger --out refund1.json
-qtax refund --key officer.key --assessment assessment.json --amount 2000 --previous-refund refund1.json --ledger ledger --out refund2.json
+qtax assess --key assessor.key --filing filing.json --outcome assessment.pdf --currency EUR --refund-due-file refund-due.txt --ledger ledger --out assessment.json
+qtax refund --key officer.key --assessment assessment.json --amount-file amount1.txt --first --ledger ledger --out refund1.json
+printf 2000 | qtax refund --key officer.key --assessment assessment.json --amount-file - --previous-refund refund1.json --ledger ledger --out refund2.json
 qtax anchor filing.json assessment.json refund1.json refund2.json --network testnet --seed-file account.key --trust-single-endpoint
 
 qtax verify refund2.json --type refund --network testnet --intake intake.pub.json --assessor assessor.pub.json --officer officer.pub.json --assessment assessment.json --filing filing.json --refund refund1.json --refund refund2.json --other-assessment assessment.json --all-supplied --trust-single-endpoint
 ```
 
 The file account.key holds the 32 byte seed of a funded Quantova account, as 64 hexadecimal characters, which pays for anchoring. It is separate from the signing keys of officials.
+
+Notes, invoice ids and amounts are read from files, or from standard input when the file is given as -, so they never appear in the shell history or the process list. Only one value can come from standard input in each command.
 
 The network has one official endpoint today, so the anchor and verify commands above are given --trust-single-endpoint to rely on it. Without that flag they stop, because chain data is accepted only when endpoints of two different operators agree. With it a verification reports INDETERMINATE and exits with status 2, because an anchor confirmed by one operator is unproven. Once the Qstamp release lists official endpoints of two different operators the flag is no longer needed.
 
