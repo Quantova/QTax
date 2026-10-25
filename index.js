@@ -13,6 +13,7 @@ module.exports = {
   keyId: T.keyId,
   describeKey: T.describeKey,
   commitParty: T.commitParty,
+  partySecretId: (secret) => F.secretIdOf(secret),
   file: T.file,
   invoice: T.invoice,
   claim: T.claim,

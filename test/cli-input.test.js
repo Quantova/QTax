@@ -17,7 +17,7 @@ function records() {
   const iso = (ms) => new Date(ms).toISOString();
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey(), seller: q.generateKey(), buyer: q.generateKey() };
   const content = Buffer.from('income tax return 2025');
-  const filing = q.file({ key: K.intake, taxpayer: 'NL-123456789', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(now - 600000) });
+  const filing = q.file({ forms: ['IB', 'ITR', 'VAT'], key: K.intake, taxpayer: 'NL-123456789', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(now - 600000) });
   const assessment = q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(now - 500000) });
   const invoice = q.invoice({ key: K.seller, invoiceId: 'INV-2025-0042', buyer: q.keyId(K.buyer), document: Buffer.from('scan'), currency: 'EUR', total: '121000', tax: '21000', issuedAt: iso(now - 400000) });
   const claim = q.claim({ key: K.buyer, invoice, claimedAt: iso(now - 300000) });
@@ -70,9 +70,9 @@ test('hostile filing files make verify exit non zero quickly and never print VAL
     const assessment = path.join(dir, 'assessment.json');
     fs.writeFileSync(assessment, JSON.stringify(w.assessment));
     const tail = ['--network', 'testnet', '--allow-unanchored', '--at', w.at];
-    const intake = ['--intake', q.keyId(w.K.intake)];
+    const intake = ['--intake', q.keyId(w.K.intake), '--forms', 'IB,ITR,VAT', '--party-secret-id', q.partySecretId(PARTY_SECRET)];
     const assessed = ['--type', 'assessment', '--assessor', q.keyId(w.K.assessor), '--all-supplied', '--other-assessment', assessment].concat(intake);
-    await control(['verify', good, '--type', 'filing', '--content-digest', w.contentDigest].concat(intake, tail), good, w.filing);
+    await control(['verify', good, '--type', 'filing', '--content-digest', w.contentDigest, '--other-filing', good].concat(intake, tail), good, w.filing);
     await control(['verify', assessment, '--filing', good, '--other-filing', good].concat(assessed, tail), good, w.filing);
     const results = await cliCampaign({
       bin: BIN,
@@ -80,7 +80,7 @@ test('hostile filing files make verify exit non zero quickly and never print VAL
       cap: ENVELOPE_MAX,
       validText: JSON.stringify(w.filing),
       commands: [
-        (file) => ['verify', file, '--type', 'filing', '--content-digest', w.contentDigest].concat(intake, tail),
+        (file) => ['verify', file, '--type', 'filing', '--content-digest', w.contentDigest, '--other-filing', file].concat(intake, tail),
         (file) => ['verify', assessment, '--filing', file, '--other-filing', file].concat(assessed, tail, ['--json']),
       ],
     });

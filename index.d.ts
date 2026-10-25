@@ -39,6 +39,7 @@ export interface FileOptions {
   ledger: string | SeriesLedger | false;
   period: string;
   form: string;
+  forms: string[];
   content?: Uint8Array;
   contentDigest?: string;
   contentSize?: number;
@@ -136,6 +137,9 @@ export interface VerifyOptions {
   root?: Envelope;
   allSupplied?: boolean;
   taxpayer?: { identity: string; salt: Uint8Array };
+  partySecretId?: string;
+  partySecret?: Uint8Array;
+  forms?: string[];
   requireAnchor?: boolean;
   at?: string;
   maxAnchorDelay?: number;
@@ -174,6 +178,7 @@ export function publicKey(key: Uint8Array): Uint8Array;
 export function keyId(key: Uint8Array): string;
 export function describeKey(key: Uint8Array): KeyDescription;
 export function commitParty(identity: string, options: { secret: Uint8Array } | { salt: Uint8Array }): { salt: Uint8Array; ref: string };
+export function partySecretId(secret: Uint8Array): string;
 export function file(options: FileOptions & { ledger: string | SeriesLedger }): Promise<Envelope>;
 export function file(options: FileOptions & { ledger: false }): Envelope;
 export function invoice(options: InvoiceOptions): Envelope;
@@ -189,7 +194,7 @@ export function complete(envelopes: Envelope | Envelope[], pending: unknown, opt
 export function verify(envelope: unknown, options: VerifyOptions): Promise<VerifyResult>;
 export function refOf(envelope: Envelope): string;
 export function anchorDigest(envelope: Envelope): string;
-export const FORMAT: 'qtax/2';
+export const FORMAT: 'qtax/3';
 export const ALGORITHM: 'ML-DSA-65';
 export const KIND: 1101;
 export const TYPES: readonly EnvelopeType[];

@@ -62,11 +62,11 @@ async function books(rng) {
   const net = network(now - 86400);
   const at = stamper(q, net);
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey(), stranger: q.generateKey() };
-  const roles = { intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] };
+  const roles = { partySecretId: q.partySecretId(PARTY_SECRET), forms: ['IB', 'ITR', 'VAT'], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] };
   let t = now - 80000;
   const next = () => (t += 20);
   const content = Buffer.from('return ' + r.hex(12));
-  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(next()) }), t + 1);
+  const filing = await at(q.file({ forms: ['IB', 'ITR', 'VAT'], key: K.intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso(next()) }), t + 1);
   const due = BigInt(r.digits(2 + r.int(28)));
   const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('decision ' + due), currency: 'EUR', refundDue: due.toString(), decidedAt: iso(next()) }), t + 1);
   const a1 = 1n + r.below(due - 1n);
@@ -217,9 +217,9 @@ test('a filing whose content size was changed never verifies against the return 
   let tt = now - 80000;
   for (let round = 0; round < ROUNDS; round += 1) {
     const content = Buffer.from('return ' + r.hex(2 + r.int(200)));
-    const filing = await at(q.file({ key: intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso((tt += 20)) }), tt + 1);
+    const filing = await at(q.file({ forms: ['IB', 'ITR', 'VAT'], key: intake, taxpayer: 'NL-' + r.digits(9), partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content, receivedAt: iso((tt += 20)) }), tt + 1);
     net.chain.block(now);
-    const v = (env) => q.verify(env, Object.assign({ type: 'filing', content, intakeKeys: [q.keyId(intake)], at: iso(now) }, net.opts));
+    const v = (env) => q.verify(env, Object.assign({ type: 'filing', content, otherFilings: [env], partySecretId: q.partySecretId(PARTY_SECRET), forms: ['IB', 'ITR', 'VAT'], intakeKeys: [q.keyId(intake)], at: iso(now) }, net.opts));
     const honest = await v(filing);
     assert.strictEqual(honest.status, 'valid', failing(honest).join('\n'));
     const size = r.pick([content.length + 1, content.length - 1, 0, content.length * 2, content.length + 1 + r.int(1e6)]);

@@ -28,11 +28,11 @@ async function world() {
   const at = stamper(q, net);
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey(), officer2: q.generateKey() };
   const t0 = now - 80000;
-  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2026 Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
+  const filing = await at(q.file({ forms: ['IB', 'ITR', 'VAT'], key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2026-Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
   const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('a'), currency: 'EUR', refundDue: '5000', decidedAt: iso(t0 + 100) }), t0 + 105);
   const refund1 = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: '3000', first: true, paidAt: iso(t0 + 200) }), t0 + 205);
   const refund2 = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: '2000', previous: refund1, paidAt: iso(t0 + 300) }), t0 + 305);
-  const roles = { intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer), q.keyId(K.officer2)] };
+  const roles = { partySecretId: q.partySecretId(PARTY_SECRET), forms: ['IB', 'ITR', 'VAT'], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer), q.keyId(K.officer2)] };
   const check = (env, type, more) => {
     net.chain.block(now);
     return q.verify(env, Object.assign({ type, filing, otherFilings: [filing], allSupplied: true }, type === 'refund' ? { assessment } : {}, roles, net.opts, more));
@@ -71,7 +71,7 @@ test('an assessment declared complete without the other assessments of the retur
 test('with a ledger a second first refund or assessment and a refund after a stale previous are refused', async () => {
   const w = await world();
   const dir = folder();
-  const filing = await w.at(q.file({ key: w.K.intake, taxpayer: 'NL-2', partySecret: PARTY_SECRET, ledger: false, period: '2026 Q3', form: 'VAT', content: Buffer.from('second return'), receivedAt: iso(w.t0 + 10) }), w.t0 + 15);
+  const filing = await w.at(await q.file({ forms: ['IB', 'ITR', 'VAT'], key: w.K.intake, taxpayer: 'NL-2', partySecret: PARTY_SECRET, ledger: dir, period: '2026-Q3', form: 'VAT', content: Buffer.from('second return'), receivedAt: iso(w.t0 + 10) }), w.t0 + 15);
   const assess = (refundDue, more) => q.assess(Object.assign({ key: w.K.assessor, filing, outcome: Buffer.from('o ' + refundDue), currency: 'EUR', refundDue, decidedAt: iso(w.t0 + 120), ledger: dir }, more));
   const a1 = await assess('5000');
   await assert.rejects(assess('9000'), (e) => e.code === 'QTAX_LEDGER');

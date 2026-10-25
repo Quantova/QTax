@@ -31,7 +31,7 @@ test('text with an unassigned code point or a noncharacter is refused', () => {
 });
 
 test('a signing key of too few different byte values or in shared memory is refused', async () => {
-  const sign = (key) => q.file({ key, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('x'), receivedAt: new Date(Date.now() - 1000).toISOString() });
+  const sign = (key) => q.file({ forms: ['IB', 'ITR', 'VAT'], key, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('x'), receivedAt: new Date(Date.now() - 1000).toISOString() });
   const shared = new Uint8Array(new SharedArrayBuffer(32));
   shared.set(q.generateKey());
   await assert.rejects(Promise.resolve().then(() => sign(new Uint8Array(32))));
@@ -41,7 +41,7 @@ test('a signing key of too few different byte values or in shared memory is refu
 });
 
 test('a misspelled or unknown option of a signing call is refused and nothing is signed', async () => {
-  await assert.rejects(Promise.resolve().then(() => q.file({ key: q.generateKey(), taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('x'), receivedAt: new Date(Date.now() - 1000).toISOString(), amend: 'x' })), /is not (an option of|used by)/);
+  await assert.rejects(Promise.resolve().then(() => q.file({ forms: ['IB', 'ITR', 'VAT'], key: q.generateKey(), taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('x'), receivedAt: new Date(Date.now() - 1000).toISOString(), amend: 'x' })), /is not (an option of|used by)/);
   await assert.rejects(Promise.resolve().then(() => q.anchor([], { seed: new Uint8Array(32).fill(5), index: 0, untl: '2030-01-01T00:00:00.000Z' })));
 });
 
@@ -121,7 +121,7 @@ test('a file that changes while the CLI hashes it is refused and nothing is writ
     fs.writeFileSync(hook, 'const fs=require(\'fs\');const t=process.env.CHANGE_FILE;const open=fs.promises.open;fs.promises.open=async function(p,...a){const fh=await open.call(this,p,...a);if(p===t){const read=fh.read.bind(fh);let n=0;fh.read=async(...b)=>{const r=await read(...b);n+=1;if(n===1){const fd=fs.openSync(t,\'r+\');fs.writeSync(fd,Buffer.from(\'Z\'),0,1,0);fs.closeSync(fd);}return r;};}return fh;};');
     await new Promise((resolve) => setTimeout(resolve, 50));
     const out = path.join(dir, 'out.json');
-    const r = spawnSync(process.execPath, ['-r', hook, path.join(__dirname, '..', 'bin', 'qtax.js')].concat(['file', '--key', keyFile, '--taxpayer-identity-file', idFile, '--party-secret-file', keyFile, '--no-ledger', '--period', '2025', '--form', 'IB', '--content', doc], ['--out', out]), { env: Object.assign({}, process.env, { CHANGE_FILE: doc, QUANTOVA_OFFLINE: '1' }), encoding: 'utf8' });
+    const r = spawnSync(process.execPath, ['-r', hook, path.join(__dirname, '..', 'bin', 'qtax.js')].concat(['file', '--key', keyFile, '--taxpayer-identity-file', idFile, '--party-secret-file', keyFile, '--no-ledger', '--period', '2025', '--form', 'IB', '--forms', 'IB,ITR,VAT', '--content', doc], ['--out', out]), { env: Object.assign({}, process.env, { CHANGE_FILE: doc, QUANTOVA_OFFLINE: '1' }), encoding: 'utf8' });
     assert.notStrictEqual(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stderr, /changed while it was read/);
     assert.ok(!fs.existsSync(out));

@@ -14,12 +14,12 @@ async function world() {
   const at = stamper(q, net);
   const K = { intake: q.generateKey(), assessor: q.generateKey(), officer: q.generateKey() };
   const t0 = now - 80000;
-  const filing = await at(q.file({ key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2026 Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
+  const filing = await at(q.file({ forms: ['IB', 'ITR', 'VAT'], key: K.intake, taxpayer: 'NL-1', partySecret: PARTY_SECRET, ledger: false, period: '2026-Q3', form: 'VAT', content: Buffer.from('return'), receivedAt: iso(t0) }), t0 + 5);
   const assessment = await at(q.assess({ ledger: false, key: K.assessor, filing, outcome: Buffer.from('a'), currency: 'EUR', refundDue: '5000', decidedAt: iso(t0 + 100) }), t0 + 105);
   const refund = await at(q.refund({ ledger: false, key: K.officer, assessment, amount: '3000', first: true, paidAt: iso(now - 200) }), now - 100);
   const check = (env, more, keys) => {
     net.chain.block(now);
-    const roles = Object.assign({ intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, keys);
+    const roles = Object.assign({ partySecretId: q.partySecretId(PARTY_SECRET), forms: ['IB', 'ITR', 'VAT'], intakeKeys: [q.keyId(K.intake)], assessorKeys: [q.keyId(K.assessor)], officerKeys: [q.keyId(K.officer)] }, keys);
     return q.verify(env, Object.assign({ type: 'refund', assessment, filing, otherFilings: [filing], allSupplied: true, refunds: [refund], otherAssessments: [assessment] }, roles, net.opts, more));
   };
   return { now, K, t0, refund, check, officer: q.keyId(K.officer) };

@@ -48,7 +48,9 @@ function store(answer) {
 test('a custom ledger store is trusted only when compareAndSwap answers exactly true', async () => {
   const w = await honest();
   const { q, K, all } = w;
-  const assess = (ledger) => q.assess({ key: K.assessor, filing: all.filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(w.now - 60), ledger });
+  const filed = 'qtax.filing.' + require('../lib/format').returnKeyOf(all.filing.statement);
+  const withFiling = (s) => ({ read: async (name) => (name === filed ? state(q, filed, 1, all.filing) : s.read(name)), compareAndSwap: s.compareAndSwap });
+  const assess = (ledger) => q.assess({ key: K.assessor, filing: all.filing, outcome: Buffer.from('decision'), currency: 'EUR', refundDue: '5000', decidedAt: iso(w.now - 60), ledger: withFiling(ledger) });
   const held = 'qtax.assessment.' + all.assessment.statement.rootFilingRef;
   const withAssessment = (s) => ({ read: async (name) => (name === held ? state(q, held, 1, all.assessment) : s.read(name)), compareAndSwap: s.compareAndSwap });
   const refund = (ledger) => q.refund({ key: K.officer, assessment: all.assessment, amount: '1000', first: true, paidAt: iso(w.now - 60), ledger: withAssessment(ledger) });
@@ -128,6 +130,8 @@ test('the command line refuses an assessment or a refund unless --ledger or --no
   const ledger = path.join(dir, 'ledger');
   fs.mkdirSync(ledger);
   const due = write('due.txt', '5000\n');
+  const filed = 'qtax.filing.' + require('../lib/format').returnKeyOf(all.filing.statement);
+  await w.q.folderLedger(ledger).compareAndSwap(filed, null, state(w.q, filed, 1, all.filing));
   const run = (args, input) => spawnSync(process.execPath, [BIN].concat(args), { encoding: 'utf8', cwd: dir, input });
   const assess = (more, out) => run(['assess', '--key', assessor, '--filing', filing, '--outcome', outcome, '--currency', 'EUR', '--refund-due-file', due, '--out', path.join(dir, out)].concat(more));
   const bare = assess([], 'a0.json');

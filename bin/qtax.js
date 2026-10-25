@@ -19,7 +19,8 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
   qtax keygen <keyfile>
   qtax key <keyfile>
   qtax commit-party --identity-file FILE --party-secret-file FILE --salt-out FILE
-  qtax file --key <intake keyfile> --taxpayer-identity-file FILE --party-secret-file FILE --period TEXT --form TEXT
+  qtax party-secret-id --party-secret-file FILE
+  qtax file --key <intake keyfile> --taxpayer-identity-file FILE --party-secret-file FILE --period YYYY|YYYY-MM|YYYY-Qn --form CODE --forms CODE,CODE...
             (--content FILE | --content-digest HEX --content-size N) [--amends FILE] (--ledger DIR | --no-ledger) [--note-file FILE] --out FILE
   qtax invoice --key <seller keyfile> --invoice-id-file FILE --buyer KEY (--document FILE | --invoice-digest HEX)
                --currency CODE --total-file FILE --tax-file FILE [--note-file FILE] --out FILE
@@ -36,8 +37,8 @@ const HELP = `qtax, post quantum tax integrity for governments with Quantova tim
               [--allow-endpoint HOST]... [--allow-loopback] [--json]
 
 Verify options by type
-  filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE]
-              [--taxpayer-identity-file FILE --taxpayer-salt-file FILE]
+  filing      --intake KEY... (--content FILE | --content-digest HEX) [--previous FILE] [--other-filing FILE]...
+              [--taxpayer-identity-file FILE --taxpayer-salt-file FILE] [--forms CODE,CODE...] [--party-secret-id HEX]
   invoice     --seller KEY [--document FILE]
   claim       --seller KEY --invoice FILE [--other-claim FILE]... [--other-invoice FILE]...
   assessment  --intake KEY... --assessor KEY... --filing FILE [--root FILE] [--previous FILE] [--outcome FILE] [--other-assessment FILE]...
@@ -103,23 +104,24 @@ const SPEC = {
   keygen: { flags: ['force'], values: [] },
   key: { flags: [], values: [] },
   'commit-party': { flags: [], values: ['identity-file', 'party-secret-file', 'salt-out'] },
-  file: { flags: ['force', 'no-ledger'], values: ['key', 'taxpayer-identity-file', 'party-secret-file', 'period', 'form', 'content', 'content-digest', 'content-size', 'amends', 'ledger', 'note', 'note-file', 'out'] },
+  'party-secret-id': { flags: [], values: ['party-secret-file'] },
+  file: { flags: ['force', 'no-ledger'], values: ['key', 'taxpayer-identity-file', 'party-secret-file', 'period', 'form', 'forms', 'content', 'content-digest', 'content-size', 'amends', 'ledger', 'note', 'note-file', 'out'] },
   invoice: { flags: ['force'], values: ['key', 'invoice-id', 'invoice-id-file', 'buyer', 'document', 'invoice-digest', 'currency', 'total', 'total-file', 'tax', 'tax-file', 'note', 'note-file', 'out'] },
   claim: { flags: ['force'], values: ['key', 'invoice', 'note', 'note-file', 'out'] },
   assess: { flags: ['force', 'no-ledger'], values: ['key', 'filing', 'outcome', 'outcome-digest', 'currency', 'refund-due', 'refund-due-file', 'supersedes', 'ledger', 'note', 'note-file', 'out'] },
   refund: { flags: ['force', 'first', 'no-ledger'], values: ['key', 'assessment', 'amount', 'amount-file', 'previous-refund', 'ledger', 'note', 'note-file', 'out'] },
   anchor: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['seed-file', 'index', 'max-fee', 'network'], multi: ['rpc', 'allow-endpoint'] },
   complete: { flags: ['trust-single-endpoint', 'allow-loopback'], values: ['pending', 'tx'], multi: ['rpc', 'allow-endpoint'] },
-  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'network'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
+  verify: { flags: ['allow-unanchored', 'all-supplied', 'json', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback'], values: ['type', 'seller', 'content', 'content-digest', 'document', 'outcome', 'previous', 'invoice', 'filing', 'root', 'assessment', 'taxpayer-identity-file', 'taxpayer-salt-file', 'at', 'max-anchor-delay', 'network', 'forms', 'party-secret-id'], multi: ['intake', 'assessor', 'officer', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'other-claim', 'other-invoice', 'rpc', 'allow-endpoint', 'expect-sender'] },
 };
 
 const VERIFY_COMMON = ['type', 'network', 'allow-unanchored', 'json', 'at', 'max-anchor-delay', 'rpc', 'trust-single-endpoint', 'trust-custom-endpoints', 'allow-loopback', 'allow-endpoint', 'expect-sender'];
 const VERIFY_BY_TYPE = {
-  filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file'],
+  filing: ['intake', 'content', 'content-digest', 'previous', 'taxpayer-identity-file', 'taxpayer-salt-file', 'other-filing', 'forms', 'party-secret-id'],
   invoice: ['seller', 'document'],
   claim: ['seller', 'invoice', 'other-claim', 'other-invoice'],
-  assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment', 'other-filing', 'all-supplied'],
-  refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'all-supplied'],
+  assessment: ['intake', 'assessor', 'filing', 'root', 'previous', 'outcome', 'other-assessment', 'other-filing', 'all-supplied', 'forms', 'party-secret-id'],
+  refund: ['intake', 'assessor', 'officer', 'assessment', 'filing', 'root', 'refund', 'previous-refund', 'other-assessment', 'other-filing', 'all-supplied', 'forms', 'party-secret-id'],
 };
 const IDENTITY_FILE_MAX = 4096;
 const VALUE_FILE_MAX = 64 * 1024;
@@ -734,12 +736,19 @@ async function cmdCommitParty(positional, flags) {
   return 0;
 }
 
+async function cmdPartySecretId(positional, flags) {
+  if (positional.length) throw usageError('party-secret-id takes options only');
+  const id = withSeed(need(flags, 'party-secret-file'), '--party-secret-file', (secret) => qx.partySecretId(secret));
+  console.log(id);
+  return 0;
+}
+
 async function cmdFile(positional, flags) {
   if (positional.length) throw usageError('file takes options only');
   ledgerChoice('filing', flags);
   const out = need(flags, 'out');
   checkPaths([['--out', out, !!flags.force]], [['--key', flags.key], ['--content', flags.content], ['--amends', flags.amends], ['--party-secret-file', flags['party-secret-file']], ['--taxpayer-identity-file', flags['taxpayer-identity-file']]]);
-  const opts = { taxpayer: identityFrom(flags, 'taxpayer-identity-file'), period: need(flags, 'period'), form: need(flags, 'form'), note: privateValue(flags, 'note', false) };
+  const opts = { taxpayer: identityFrom(flags, 'taxpayer-identity-file'), period: need(flags, 'period'), form: need(flags, 'form'), forms: need(flags, 'forms').split(','), note: privateValue(flags, 'note', false) };
   opts.ledger = flags.ledger !== undefined ? ledgerFolder(flags.ledger) : false;
   if (flags.content !== undefined && flags['content-size'] !== undefined) throw usageError('--content-size goes with --content-digest, the size of --content is measured');
   const c = await digestFrom(flags, 'content', 'content-digest', 'return file', true);
@@ -865,6 +874,8 @@ async function cmdVerify(positional, flags) {
   if (flags['other-assessment']) opts.otherAssessments = capList(flags['other-assessment'], 'other-assessment', 500).map((f) => readJson(f, 'assessment', true));
   if (flags['other-filing']) opts.otherFilings = capList(flags['other-filing'], 'other-filing', 500).map((f) => readJson(f, 'filing', true));
   if (flags['other-claim']) opts.otherClaims = capList(flags['other-claim'], 'other-claim', 500).map((f) => readJson(f, 'claim', true));
+  if (flags.forms !== undefined) opts.forms = flags.forms.split(',');
+  if (flags['party-secret-id'] !== undefined) opts.partySecretId = flags['party-secret-id'];
   const hasIdentity = flags['taxpayer-identity-file'] !== undefined;
   if (hasIdentity !== (flags['taxpayer-salt-file'] !== undefined)) throw usageError('a taxpayer identity and --taxpayer-salt-file go together');
   if (hasIdentity) opts.taxpayer = { identity: identityFrom(flags, 'taxpayer-identity-file'), salt: readSalt(flags['taxpayer-salt-file']) };
@@ -900,7 +911,7 @@ async function main() {
   }
   if (!Object.hasOwn(SPEC, command)) throw usageError('unknown command ' + safe(command).slice(0, 40));
   const { positional, flags } = parse(command, rest);
-  const run = { keygen: cmdKeygen, key: cmdKey, 'commit-party': cmdCommitParty, file: cmdFile, invoice: cmdInvoice, claim: cmdClaim, assess: cmdAssess, refund: cmdRefund, anchor: cmdAnchor, complete: cmdComplete, verify: cmdVerify }[command];
+  const run = { keygen: cmdKeygen, key: cmdKey, 'commit-party': cmdCommitParty, 'party-secret-id': cmdPartySecretId, file: cmdFile, invoice: cmdInvoice, claim: cmdClaim, assess: cmdAssess, refund: cmdRefund, anchor: cmdAnchor, complete: cmdComplete, verify: cmdVerify }[command];
   return run(positional, flags);
 }
 
