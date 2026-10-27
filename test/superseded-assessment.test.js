@@ -43,3 +43,19 @@ test('the current assessment is valid when every assessment of the return is dec
   assert.strictEqual(r.status, 'valid', JSON.stringify(r.checks.filter((c) => !c.ok)));
   await assert.rejects(q.verify(s.first, Object.assign({ allSupplied: 'yes' }, s.base)), (e) => e.code === 'QTAX_INVALID_INPUT');
 });
+
+const { honest } = require('./honest');
+const { iso } = require('./chain');
+
+test('the later amendment check bounds the number of amendment anchors it verifies per assessment', async () => {
+  const h = await honest();
+  const original = h.all.filing;
+  const later = iso(Math.floor(Date.now() / 1000) - 1000);
+  const amendment = h.q.file({ forms: ['IB', 'ITR', 'VAT'], key: h.K.intake, taxpayer: 'NL-123456789', partySecret: PARTY_SECRET, ledger: false, period: '2025', form: 'IB', content: Buffer.from('income tax return 2025 amended'), receivedAt: later, amends: original });
+  const many = Array.from({ length: 70 }, () => amendment);
+  const opts = Object.assign({}, h.options.assessment, { otherFilings: [original].concat(many) });
+  const r = await h.q.verify(h.all.assessment, opts);
+  const latest = r.checks.find((c) => c.name === 'latest filing');
+  assert.ok(latest, JSON.stringify(r.checks.map((c) => c.name)));
+  assert.match(latest.detail, /more later amendments .* than the \d+ that can be checked/);
+});
