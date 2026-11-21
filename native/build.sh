@@ -5,7 +5,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
 RUSTUP_HOME_DIR="${RUSTUP_HOME:-$HOME/.rustup}"
-export RUSTFLAGS="--remap-path-prefix=$HERE=/qtax --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$RUSTUP_HOME_DIR=/rustup"
+export RUSTFLAGS="--remap-path-prefix=$HERE=/qtax --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$RUSTUP_HOME_DIR=/rustup --remap-path-prefix=$(rustc --print sysroot)=/rust"
 cd "$HERE"
 wasm-pack build --release --target nodejs --out-dir ../wasm --out-name qtax_native --no-pack -- --locked
 rm -f ../wasm/.gitignore
